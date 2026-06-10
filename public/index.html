@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campfire</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="banner" class="banner"></div>
+<div id="ready-badge" class="ready-badge"></div>
+<div id="fire" class="fire-ambient campfire" style="--fire: 1;"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="art.js"></script>
+<script>
+/* ==========================================================
+   STORY RELAY — client
+   ========================================================== */
+
+const app = document.getElementById('app');
+const banner = document.getElementById('banner');
+const readyBadge = document.getElementById('ready-badge');
+const fireEl = document.getElementById('fire');
+const socket = io();
+
+let S = null;
+let renderedKey = '';
+let timerInterval = null;
+let voteInterval = null;
+let autoReadyRound = -1;
+let voteSent = false;
+let pendingUp = null;
+let pendingDown = null;
+let drafts = {};        // round -> the text you've typed (survives un-ready)
+let backspaces = {};    // round -> backspace count
+
+/* ---------- Helpers ---------- */
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+function countWords(text) { return text.trim().split(/\s+/).filter(Boolean).length; }
+function save(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+function load(key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } }
+
+/* ==========================================================
+   CAMPFIRE ART
+   ========================================================== */
+fireEl.innerHTML = campfireSVG();
+
+// Sets how alive the fire looks: 1 = roaring, 0 = smoldering coals
+function setFire(stage, visible) {
+  fireEl.style.setProperty('--fire', Math.max(0, Math.min(1, stage)));
+  fireEl.style.display = visible ? 'block' : 'none';
+}
+
+
+
+/* ---------- Connection plumbing ---------- */
+socket.on('state', (st) => { S = st; banner.style.display = 'none'; render(); });
+socket.on('connect', () => {
+  const code = load('sr_code'), name = load('sr_name');
+  if (code && name && !S) {
+    socket.emit('join_room', { code, name }, (res) => { if (!res || !res.ok) renderHome(); });
+  }
+});
+socket.on('disconnect', () => {
+  banner.textContent = 'Connection lost — trying to reconnect…';
+  banner.style.display = 'block';
+});
+
+/* ---------- Master render ---------- */
+function render() {
+  if (!S) return renderHome();
+  updateChrome();
+  const key = screenKey();
+  if (key === renderedKey) { patch(); return; }
+  renderedKey = key;
+  clearInterval(timerInterval);
+  clearInterval(voteInterval);
+
+  if (S.phase === 'lobby') renderLobby();
+  else if (S.phase === 'writing') renderWriting();
+  else if (S.phase === 'reading') renderReading();
+  else if (S.phase === 'voting') renderVoting();
+  else if (S.phase === 'results') renderResults();
+}
+
+function screenKey() {
+  if (S.phase === 'writing') return 'writing-' + S.writing.round + '-' + S.writing.ready;
+  if (S.phase === 'reading') return 'reading-' + S.reading.index;
+  if (S.phase === 'voting') return 'voting-' + S.voting.voted;
+  if (S.phase === 'lobby') return 'lobby-' + JSON.stringify(S.players) + JSON.stringify(S.settings) + S.isHost;
+  return S.phase;
+}
+
+function patch() {
+  if (S.phase === 'writing') {
+    const list = document.getElementById('status-list');
+    if (list) list.innerHTML = statusListHTML();
+  }
+  if (S.phase === 'voting') {
+    const w = document.getElementById('waiting-on');
+    if (w) w.textContent = waitingText();
+  }
+}
+
+/* The campfire and ready-fraction badge live outside the screens */
+function updateChrome() {
+  // Ready badge: visible to everyone during writing rounds
+  if (S && S.phase === 'writing') {
+    readyBadge.style.display = 'flex';
+    readyBadge.innerHTML = `${mallow('gold', 18)} ${S.writing.readyCount}/${S.writing.total} ready`;
+  } else {
+    readyBadge.style.display = 'none';
+  }
+
+  // The fire dwindles round by round, down to coals at the final round
+  if (!S) { setFire(1, false); return; }
+  if (S.phase === 'lobby') setFire(1, true);
+  else if (S.phase === 'writing') {
+    const w = S.writing;
+    const stage = w.totalRounds > 1 ? 1 - (w.round / (w.totalRounds - 1)) : 1;
+    setFire(stage, true);
+  }
+  else if (S.phase === 'reading') setFire(0.1, true);
+  else if (S.phase === 'voting') setFire(0.06, true);
+  else if (S.phase === 'results') setFire(0.04, true);
+}
+
+/* ==========================================================
+   SCREEN: HOME — the fire is roaring, stories drift in the smoke
+   ========================================================== */
+function renderHome() {
+  renderedKey = 'home';
+  clearInterval(timerInterval);
+  clearInterval(voteInterval);
+  setFire(1, false); // the hero has its own fire
+  readyBadge.style.display = 'none';
+
+  const vigs = VIGNETTES.map((v, i) => `<div class="vignette v${i + 1}">${v}</div>`).join('');
+
+  app.innerHTML = `
+    <h1>Campfire</h1>
+    <p class="subtitle">Round-robin stories around the fire. Write, pass, ruin, vote.</p>
+    <div class="hero" aria-hidden="true">
+      <div class="smoke-stage">
+        <div class="puff p1"></div><div class="puff p2"></div><div class="puff p3"></div>
+        ${vigs}
+      </div>
+      <div class="hero-fire campfire" style="--fire: 1;">${campfireSVG()}</div>
+    </div>
+    <div class="card">
+      <div class="field">
+        <label>Your name</label>
+        <input type="text" id="name-input" maxlength="20" value="${esc(load('sr_name'))}" placeholder="What your friends call you">
+      </div>
+      <div class="btn-row">
+        <button onclick="createRoom()">Light a fire (create room)</button>
+      </div>
+      <div class="spacer"></div>
+      <div class="field">
+        <label>Or join a fire with a room code</label>
+        <input type="text" id="code-input" maxlength="4" placeholder="e.g. WXYZ" style="text-transform: uppercase;">
+      </div>
+      <div class="btn-row">
+        <button class="secondary" onclick="joinRoom()">Join room</button>
+      </div>
+      <p class="error-msg" id="home-error"></p>
+    </div>`;
+}
+
+function createRoom() {
+  const name = document.getElementById('name-input').value.trim();
+  socket.emit('create_room', { name }, (res) => {
+    if (res && res.ok) { save('sr_name', name); save('sr_code', res.code); }
+    else document.getElementById('home-error').textContent = (res && res.error) || 'Something went wrong.';
+  });
+}
+
+function joinRoom() {
+  const name = document.getElementById('name-input').value.trim();
+  const code = document.getElementById('code-input').value.trim().toUpperCase();
+  socket.emit('join_room', { code, name }, (res) => {
+    if (res && res.ok) { save('sr_name', name); save('sr_code', res.code); }
+    else document.getElementById('home-error').textContent = (res && res.error) || 'Something went wrong.';
+  });
+}
+
+/* ==========================================================
+   SCREEN: LOBBY
+   ========================================================== */
+function renderLobby() {
+  drafts = {}; backspaces = {}; autoReadyRound = -1; voteSent = false;
+  const s = S.settings;
+  const chips = S.players.map(p => `
+    <span class="player-chip">
+      <span class="dot ${p.connected ? '' : 'off'}"></span>
+      ${esc(p.name)}${p.isHost ? ' ★' : ''}
+    </span>`).join('');
+
+  const settingsBlock = S.isHost ? `
+    <div class="field-row">
+      <div class="field">
+        <label>Time per round (seconds)</label>
+        <input type="number" min="15" max="600" value="${s.seconds}"
+          onchange="socket.emit('update_settings', { seconds: this.value })">
+      </div>
+      <div class="field">
+        <label>Voting time (seconds)</label>
+        <input type="number" min="5" max="120" value="${s.votingSeconds}"
+          onchange="socket.emit('update_settings', { votingSeconds: this.value })">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Minimum words</label>
+        <input type="number" min="0" max="500" value="${s.minWords}"
+          onchange="socket.emit('update_settings', { minWords: this.value })">
+      </div>
+      <div class="field">
+        <label>Maximum words (0 = none)</label>
+        <input type="number" min="0" max="2000" value="${s.maxWords}"
+          onchange="socket.emit('update_settings', { maxWords: this.value })">
+      </div>
+    </div>
+    <div class="field">
+      <label>When a story lands in your hands, you see…</label>
+      <select onchange="socket.emit('update_settings', { visibility: this.value })">
+        <option value="full" ${s.visibility === 'full' ? 'selected' : ''}>The whole story so far (coherent mode)</option>
+        <option value="last" ${s.visibility === 'last' ? 'selected' : ''}>Only the previous segment (chaos mode)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Anonymous mode</label>
+      <select onchange="socket.emit('update_settings', { anonymous: this.value === 'on' })">
+        <option value="off" ${!s.anonymous ? 'selected' : ''}>Off — names shown during reading and voting</option>
+        <option value="on" ${s.anonymous ? 'selected' : ''}>On — nobody knows who wrote what until the results</option>
+      </select>
+    </div>
+    <div class="btn-row">
+      <button onclick="socket.emit('start_game')" ${S.players.length < 3 ? 'disabled' : ''}>
+        ${S.players.length < 3 ? 'Need at least 3 players' : 'Gather round — start the game'}
+      </button>
+    </div>
+    <p class="subtitle">A Camp Director will be chosen at random when the game starts.</p>`
+  : `
+    <p class="subtitle">
+      ${s.seconds}s per round · ${s.votingSeconds}s to vote · ${s.minWords}${s.maxWords > 0 ? '–' + s.maxWords : '+'} words ·
+      ${s.visibility === 'full' ? 'whole story visible' : 'only the last segment visible'}${s.anonymous ? ' · anonymous authors' : ''}
+    </p>
+    <p class="subtitle">Waiting for the fire-starter to begin…</p>`;
+
+  app.innerHTML = `
+    <h1>Campfire</h1>
+    <div class="card" style="text-align:center;">
+      <p class="subtitle">Tell your friends the room code</p>
+      <div class="room-code">${esc(S.code)}</div>
+    </div>
+    <div class="card">
+      <h2>Around the fire (${S.players.length}/8)</h2>
+      ${chips}
+    </div>
+    <div class="card">
+      <h2>Game settings</h2>
+      ${settingsBlock}
+    </div>`;
+}
+
+/* ==========================================================
+   SCREEN: WRITING
+   ========================================================== */
+function statusListHTML() {
+  return S.writing.status.map(p => `
+    <div class="status-row">
+      <span class="${p.done ? 'done' : ''}">${p.done ? '✓' : '…'}</span>
+      ${esc(p.name)}${p.connected ? '' : ' (disconnected)'}
+    </div>`).join('');
+}
+
+function directorPill() {
+  return S.directorName
+    ? `<span class="director-pill">Camp Director: ${esc(S.directorName)}${S.youAreDirector ? ' (you!)' : ''}</span>`
+    : '';
+}
+
+function renderWriting() {
+  const w = S.writing;
+  const s = S.settings;
+
+  if (w.ready) {
+    app.innerHTML = `
+      <div class="card" style="text-align:center;">
+        ${directorPill()}
+        <h2>Marshmallow's on the fire ✓</h2>
+        <p class="subtitle">Round ${w.round + 1} of ${w.totalRounds} — the round ends when everyone's ready or time runs out.</p>
+        <div class="btn-row" style="justify-content:center;">
+          <button class="secondary" onclick="socket.emit('unready')">Wait — keep writing</button>
+        </div>
+        <div class="status-list" id="status-list" style="text-align:left;">${statusListHTML()}</div>
+      </div>`;
+    startCountdown(false);
+    return;
+  }
+
+  let context;
+  if (w.context.mode === 'new') {
+    context = `<p class="subtitle">You're starting a fresh story. Set the scene, introduce someone, cause a problem — anything goes.</p>`;
+  } else if (w.context.mode === 'full') {
+    context = `<p class="subtitle">A story has been passed to you. Here it is so far — keep it going!</p>
+      <div class="story-box">${w.context.segments.map(t => `<div class="segment">${esc(t)}</div>`).join('')}</div>`;
+  } else {
+    context = `<p class="subtitle">A story has been passed to you, but you can only see the most recent part. Good luck!</p>
+      <div class="story-box"><div class="segment">${esc(w.context.segments[0])}</div></div>`;
+  }
+
+  const limitLabel = s.maxWords > 0 ? `${s.minWords}–${s.maxWords} words` : `at least ${s.minWords} words`;
+
+  app.innerHTML = `
+    <div class="card">
+      <div class="timer-wrap">
+        <div class="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
+        <span class="timer-num" id="timer-num"></span>
+      </div>
+      ${directorPill()}
+      <h2>Round ${w.round + 1} of ${w.totalRounds}</h2>
+      ${context}
+      <textarea id="segment-input" placeholder="Write your part here… (${limitLabel})" oninput="onType()"></textarea>
+      <p class="word-count" id="word-count"></p>
+      <div class="btn-row">
+        <button id="ready-btn" onclick="goReady(false)" disabled>I'm ready</button>
+      </div>
+      <div class="status-list" id="status-list">${statusListHTML()}</div>
+    </div>`;
+
+  // Restore the draft (e.g. after clicking "keep writing")
+  const input = document.getElementById('segment-input');
+  input.value = drafts[w.round] || '';
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      backspaces[w.round] = (backspaces[w.round] || 0) + 1;
+    }
+  });
+  updateWordCount();
+  startCountdown(true);
+  input.focus();
+}
+
+function onType() {
+  const input = document.getElementById('segment-input');
+  if (input && S.writing) drafts[S.writing.round] = input.value;
+  updateWordCount();
+}
+
+function startCountdown(canAutoReady) {
+  clearInterval(timerInterval);
+  const tick = () => {
+    const fill = document.getElementById('timer-fill');
+    const num = document.getElementById('timer-num');
+    if (!S || !S.writing) return;
+    const total = S.settings.seconds * 1000;
+    const left = Math.max(0, S.writing.endsAt - Date.now());
+    if (fill && num) {
+      fill.style.width = (left / total * 100) + '%';
+      fill.classList.toggle('low', left <= 10000);
+      const sec = Math.ceil(left / 1000);
+      num.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+    }
+    if (left <= 0 && canAutoReady && autoReadyRound !== S.writing.round) {
+      autoReadyRound = S.writing.round;
+      goReady(true); // time's up — whatever's written goes on the fire
+    }
+  };
+  tick();
+  timerInterval = setInterval(tick, 250);
+}
+
+function updateWordCount() {
+  const input = document.getElementById('segment-input');
+  const counter = document.getElementById('word-count');
+  const btn = document.getElementById('ready-btn');
+  if (!input || !counter || !btn) return;
+  const s = S.settings;
+  const w = countWords(input.value);
+  const overMax = s.maxWords > 0 && w > s.maxWords;
+  const underMin = w < s.minWords;
+
+  if (overMax) {
+    counter.textContent = `${w} words — over the ${s.maxWords}-word limit, trim it down`;
+    counter.className = 'word-count bad';
+  } else if (underMin) {
+    counter.textContent = `${w} / ${s.minWords} words minimum`;
+    counter.className = 'word-count';
+  } else {
+    counter.textContent = s.maxWords > 0 ? `${w} words (max ${s.maxWords}) — looking good` : `${w} words — looking good`;
+    counter.className = 'word-count good';
+  }
+  btn.disabled = underMin || overMax;
+}
+
+function goReady(timeRanOut) {
+  if (!S || !S.writing || S.writing.ready) return;
+  const round = S.writing.round;
+  const input = document.getElementById('segment-input');
+  const text = input ? input.value : (drafts[round] || '');
+  drafts[round] = text;
+  const roundStart = S.writing.endsAt - S.settings.seconds * 1000;
+  const seconds = Math.max(0, (Date.now() - roundStart) / 1000);
+  socket.emit('ready', { text, backspaces: backspaces[round] || 0, seconds });
+  if (!timeRanOut) renderedKey = 'sending';
+}
+
+/* ==========================================================
+   SCREEN: READING
+   ========================================================== */
+function renderReading() {
+  const r = S.reading;
+  const segments = r.segments.map(seg => `
+    <div class="segment">
+      ${seg.author ? `<span class="segment-author author-label" style="display:none;">${esc(seg.author)} wrote:</span>` : ''}
+      ${esc(seg.text)}
+    </div>`).join('');
+
+  const canAdvance = r.youAreOwner || S.youAreDirector || S.isHost;
+  const advanceBtn = canAdvance
+    ? `<button onclick="socket.emit('advance_reading')">${r.index + 1 < r.total ? 'Next story' : 'Pass out the marshmallows (vote)'}</button>`
+    : `<p class="subtitle">${r.ownerName ? esc(r.ownerName) + ' or the Camp Director' : 'The Camp Director'} moves things along when the reading's done.</p>`;
+
+  app.innerHTML = `
+    <div class="card">
+      ${directorPill()}
+      <p class="subtitle">The fire is down to coals — story ${r.index + 1} of ${r.total}</p>
+      <h2>${r.ownerName ? esc(r.ownerName) + "'s story" : "A mystery camper's story"} ${r.youAreOwner ? "— that's you! Read it aloud!" : ''}</h2>
+      ${r.ownerName ? '' : '<p class="subtitle">Anonymous mode — the Camp Director reads this one aloud.</p>'}
+      <div class="story-box">${segments}</div>
+      <div class="btn-row">
+        ${r.segments.some(seg => seg.author) ? `<button class="secondary" onclick="toggleAuthors(this)">Show who wrote what</button>` : ''}
+        ${advanceBtn}
+      </div>
+    </div>`;
+}
+
+function toggleAuthors(btn) {
+  const labels = document.querySelectorAll('.author-label');
+  const hidden = labels.length && labels[0].style.display === 'none';
+  labels.forEach(l => l.style.display = hidden ? 'block' : 'none');
+  btn.textContent = hidden ? 'Hide who wrote what' : 'Show who wrote what';
+}
+
+/* ==========================================================
+   SCREEN: VOTING — golden marshmallow up, burnt marshmallow down
+   ========================================================== */
+function waitingText() {
+  return S.voting.waitingOn.length
+    ? 'Still voting: ' + S.voting.waitingOn.join(', ')
+    : 'Counting the marshmallows…';
+}
+
+function renderVoting() {
+  if (S.voting.voted) {
+    app.innerHTML = `
+      <div class="card" style="text-align:center;">
+        <h2>Marshmallows handed out ✓</h2>
+        <p class="subtitle" id="waiting-on">${waitingText()}</p>
+      </div>`;
+    return;
+  }
+
+  pendingUp = null;
+  pendingDown = null;
+  voteSent = false;
+
+  const rows = S.voting.options.map(o => `
+    <div class="vote-row" id="row-${o.index}">
+      <div class="who">
+        ${o.ownerName ? esc(o.ownerName) + "'s story" : 'Story ' + (o.index + 1)}
+        <span class="teaser">“${esc(o.teaser)}”</span>
+      </div>
+      <button class="mallow-btn" id="gold-${o.index}" title="Golden marshmallow — best story" onclick="pickGold(${o.index})">${mallow('gold')}</button>
+      <button class="mallow-btn" id="burnt-${o.index}" title="Burnt marshmallow — worst story" onclick="pickBurnt(${o.index})">${mallow('burnt')}</button>
+    </div>`).join('');
+
+  app.innerHTML = `
+    <div class="card">
+      <div class="timer-wrap">
+        <div class="timer-bar"><div class="timer-fill" id="vote-fill"></div></div>
+        <span class="timer-num" id="vote-num"></span>
+      </div>
+      <h2>Hand out your marshmallows</h2>
+      <div class="vote-legend">
+        <span>${mallow('gold', 20)} golden = best story</span>
+        <span>${mallow('burnt', 20)} burnt = worst story</span>
+      </div>
+      ${rows}
+      <div class="btn-row">
+        <button id="lock-votes" onclick="lockVotes(false)" disabled>Hand them out</button>
+      </div>
+    </div>`;
+
+  startVoteCountdown();
+}
+
+function pickGold(i) {
+  pendingUp = (pendingUp === i) ? null : i;
+  if (pendingDown === i) pendingDown = null;
+  paintVotes();
+}
+function pickBurnt(i) {
+  pendingDown = (pendingDown === i) ? null : i;
+  if (pendingUp === i) pendingUp = null;
+  paintVotes();
+}
+function paintVotes() {
+  S.voting.options.forEach(o => {
+    const g = document.getElementById('gold-' + o.index);
+    const b = document.getElementById('burnt-' + o.index);
+    if (g) g.classList.toggle('picked-gold', pendingUp === o.index);
+    if (b) b.classList.toggle('picked-burnt', pendingDown === o.index);
+  });
+  const lock = document.getElementById('lock-votes');
+  if (lock) lock.disabled = (pendingUp === null || pendingDown === null);
+}
+
+function startVoteCountdown() {
+  clearInterval(voteInterval);
+  const tick = () => {
+    if (!S || !S.voting) return;
+    const total = S.settings.votingSeconds * 1000;
+    const left = Math.max(0, S.voting.endsAt - Date.now());
+    const fill = document.getElementById('vote-fill');
+    const num = document.getElementById('vote-num');
+    if (fill && num) {
+      fill.style.width = (left / total * 100) + '%';
+      fill.classList.toggle('low', left <= 4000);
+      num.textContent = '0:' + String(Math.ceil(left / 1000)).padStart(2, '0');
+    }
+    if (left <= 0) lockVotes(true); // time's up — send whatever's picked
+  };
+  tick();
+  voteInterval = setInterval(tick, 200);
+}
+
+function lockVotes(timeRanOut) {
+  if (voteSent) return;
+  if (!timeRanOut && (pendingUp === null || pendingDown === null)) return;
+  voteSent = true;
+  clearInterval(voteInterval);
+  socket.emit('cast_vote', { up: pendingUp, down: pendingDown });
+}
+
+/* ==========================================================
+   SCREEN: RESULTS — winner, tally, and the campfire awards
+   ========================================================== */
+function renderResults() {
+  const r = S.results;
+  const bannerText = r.winners.length === 1
+    ? `${esc(r.winners[0])}'s story takes the golden marshmallow!`
+    : `A shared fire: ${r.winners.map(esc).join(' & ')} tie for the win!`;
+
+  const tally = r.tally.map(t => `
+    <div class="vote-tally">
+      <span>${esc(t.ownerName)}'s story</span>
+      <span>${mallow('gold', 18)} ${t.up}</span>
+      <span>${mallow('burnt', 18)} ${t.down}</span>
+      <span class="score">${t.score >= 0 ? '+' : ''}${t.score}</span>
+    </div>`).join('');
+
+  const awards = r.awards.map(a => `
+    <div class="award-card">
+      <div class="award-title">${esc(a.title)}</div>
+      <div class="award-desc">${esc(a.desc)}</div>
+      <div class="award-name">${esc(a.name)}</div>
+      <div class="award-value">${esc(a.value)}</div>
+    </div>`).join('');
+
+  const allStories = r.stories.map(story => `
+    <details>
+      <summary>${esc(story.ownerName)}'s story</summary>
+      <div class="story-box">${story.segments.map(seg => `
+        <div class="segment">
+          <span class="segment-author">${esc(seg.author)} wrote:</span>
+          ${esc(seg.text)}
+        </div>`).join('')}</div>
+    </details>`).join('');
+
+  const againBtn = (S.isHost || S.youAreDirector)
+    ? `<button onclick="socket.emit('play_again')">Relight the fire (play again)</button>`
+    : `<p class="subtitle">The Camp Director can relight the fire for another round.</p>`;
+
+  app.innerHTML = `
+    <div class="winner-banner">
+      <div style="margin-bottom: 6px;">${mallow('gold', 44)}</div>
+      <h1>${bannerText}</h1>
+      ${S.settings.anonymous ? '<p class="subtitle">The masks come off — here is who wrote what.</p>' : ''}
+    </div>
+    <div class="card">
+      <h2>Final tally</h2>
+      ${tally}
+    </div>
+    <div class="card">
+      <h2>Campfire awards</h2>
+      <div class="awards">${awards}</div>
+    </div>
+    <div class="card">
+      <h2>Read them again</h2>
+      ${allStories}
+      <div class="btn-row">${againBtn}</div>
+    </div>`;
+}
+
+/* ---------- Kick things off ---------- */
+renderHome();
+</script>
+</body>
+</html>
