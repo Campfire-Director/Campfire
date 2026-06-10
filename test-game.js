@@ -2,8 +2,10 @@
    with the campfire rules (ready, director, marshmallow votes, awards). */
 const { io } = require('socket.io-client');
 const URL = 'http://localhost:3000';
-const ANON = process.env.ANON === '1'; // run with ANON=1 to test anonymous mode
-console.log('Mode:', ANON ? 'ANONYMOUS' : 'normal');
+const ANON = process.env.ANON === '1';
+const THEME = process.env.THEME === '1';
+console.log('Mode:', (ANON ? 'ANONYMOUS' : 'normal') + (THEME ? " + Director's Theme" : ''));
+let themeSet = false;
 
 const clients = {};
 const readyRounds = {};
@@ -17,6 +19,14 @@ function fail(msg) { console.error('TEST FAILED:', msg); process.exit(1); }
 function handleState(name, st) {
   if (st.phase !== 'lobby' && st.directorName) directorSeen = st.directorName;
 
+  if (st.phase === 'theming') {
+    if (!st.theming.endsAt) fail('theming phase has no countdown');
+    if (st.theming.youAreDirector && !themeSet) {
+      themeSet = true;
+      setTimeout(() => clients[name].emit('set_theme', { theme: 'a haunted lighthouse' }), 50);
+    }
+  }
+
   if (st.phase === 'writing' && !st.writing.ready) {
     if (typeof st.writing.readyCount !== 'number') fail('no readyCount in writing view');
     const r = st.writing.round;
@@ -24,6 +34,8 @@ function handleState(name, st) {
     if (!readyRounds[name].has(r)) {
       readyRounds[name].add(r);
       if (r > 0 && st.writing.context.segments.length === 0) fail('no context in round ' + r);
+      if (THEME && st.theme !== 'a haunted lighthouse') fail('theme not shown on writing screen: ' + st.theme);
+      if (!THEME && st.theme) fail('unexpected theme when toggle off');
       // Each player types a different amount so the awards are distinguishable
       const repeats = name === 'Ana' ? 12 : name === 'Ben' ? 6 : 3;
       const text = Array(repeats).fill(`${name}-r${r + 1}`).join(' ');
@@ -56,6 +68,7 @@ function handleState(name, st) {
     votedNames.add(name);
     if (!st.voting.endsAt) fail('voting has no countdown endsAt');
     if (st.voting.options.length !== 2) fail('expected 2 votable stories, got ' + st.voting.options.length);
+    if (st.voting.options.some(o => !o.opening || o.opening.length < 1)) fail('vote option missing opening-line preview');
     if (ANON && st.voting.options.some(o => o.ownerName !== null)) fail('anonymous mode leaked owners on the ballot');
     if (!ANON && st.voting.options.some(o => o.ownerName === name)) fail('voter can see own story');
     const up = st.voting.options[0].index;
@@ -77,7 +90,8 @@ function handleState(name, st) {
     if (demo.name !== 'Ben') fail('Demolitionist should be Ben, got ' + demo.name);
     if (!directorSeen) fail('no Camp Director was ever announced');
     if (r.tally.some(t => !t.ownerName)) fail('results should reveal all names');
-    console.log('Camp Director was:', directorSeen);
+    if (THEME && st.theme !== 'a haunted lighthouse') fail('theme missing at results');
+    console.log('Camp Director was:', directorSeen, THEME ? '(theme: ' + st.theme + ')' : '');
     console.log('Tally:', r.tally.map(t => `${t.ownerName} ${t.up}up/${t.down}down=${t.score >= 0 ? '+' : ''}${t.score}`).join('  '));
     console.log('Awards:', r.awards.map(a => `${a.title}: ${a.name} (${a.value})`).join(' | '));
     console.log('Winner(s):', r.winners.join(', '));
@@ -107,7 +121,7 @@ ana.on('connect', () => {
           if (!r2.ok) fail('join_room ' + n + ': ' + r2.error);
           joined++;
           if (joined === 2) {
-            ana.emit('update_settings', { seconds: 15, minWords: 1, maxWords: 0, visibility: 'full', votingSeconds: 10, anonymous: ANON });
+            ana.emit('update_settings', { seconds: 15, minWords: 1, maxWords: 0, visibility: 'full', votingSeconds: 10, anonymous: ANON, directorTheme: THEME });
             setTimeout(() => ana.emit('start_game'), 100);
           }
         });

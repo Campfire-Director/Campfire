@@ -243,3 +243,65 @@ summary { cursor: pointer; font-size: 15px; padding: 8px 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ==========================================================
+   v2 ADDITIONS — theme banner, vote previews, text contrast
+   ========================================================== */
+
+/* --- Text-over-image contrast ---
+   The night painting is busy in places (the moon, pale ridges),
+   so headings and loose subtitles that sit directly on it get a
+   soft dark scrim behind the text via text-shadow. */
+h1 {
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+/* The home screen title + tagline sit right on the sky — give them
+   their own readable plate so they never fight the moon. */
+.home-hero-text {
+  text-align: center;
+  background: linear-gradient(rgba(10, 15, 24, 0.55), rgba(10, 15, 24, 0.18));
+  border-radius: var(--radius);
+  padding: 18px 16px 16px;
+  margin-bottom: 4px;
+}
+.home-hero-text h1 { font-size: 30px; }
+.home-hero-text .subtitle { margin-bottom: 0; }
+/* Any subtitle NOT inside a card is floating on the painting — shade it */
+body > #app > .subtitle,
+.home-hero-text .subtitle {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+}
+
+/* --- The Director's Theme banner (shown on every writing screen) --- */
+.theme-banner {
+  background: linear-gradient(90deg, rgba(233, 143, 62, 0.22), rgba(233, 143, 62, 0.08));
+  border: 1px solid rgba(233, 143, 62, 0.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 10px 0 4px;
+  font-family: var(--font-story);
+  font-size: 16px;
+  color: var(--ink);
+}
+.theme-banner .theme-label {
+  display: inline-block;
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-right: 8px;
+}
+
+/* --- Voting: opening-line previews + stacked marshmallows --- */
+.vote-row { align-items: flex-start; }
+.vote-row .who-name { font-size: 15px; margin-bottom: 4px; }
+.vote-row .opening {
+  font-family: var(--font-story);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-height: 4.6em;
+  overflow-y: auto;
+}
+.mallow-stack { display: flex; gap: 8px; flex-shrink: 0; }

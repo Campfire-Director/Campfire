@@ -83,6 +83,7 @@ function render() {
   clearInterval(voteInterval);
 
   if (S.phase === 'lobby') renderLobby();
+  else if (S.phase === 'theming') renderTheming();
   else if (S.phase === 'writing') renderWriting();
   else if (S.phase === 'reading') renderReading();
   else if (S.phase === 'voting') renderVoting();
@@ -93,6 +94,7 @@ function screenKey() {
   if (S.phase === 'writing') return 'writing-' + S.writing.round + '-' + S.writing.ready;
   if (S.phase === 'reading') return 'reading-' + S.reading.index;
   if (S.phase === 'voting') return 'voting-' + S.voting.voted;
+  if (S.phase === 'theming') return 'theming-' + S.theming.youAreDirector;
   if (S.phase === 'lobby') return 'lobby-' + JSON.stringify(S.players) + JSON.stringify(S.settings) + S.isHost;
   return S.phase;
 }
@@ -121,6 +123,7 @@ function updateChrome() {
   // The fire dwindles round by round, down to coals at the final round
   if (!S) { setFire(1, false); return; }
   if (S.phase === 'lobby') setFire(1, true);
+  else if (S.phase === 'theming') setFire(1, true);
   else if (S.phase === 'writing') {
     const w = S.writing;
     const stage = w.totalRounds > 1 ? 1 - (w.round / (w.totalRounds - 1)) : 1;
@@ -144,8 +147,10 @@ function renderHome() {
   const vigs = VIGNETTES.map((v, i) => `<div class="vignette v${i + 1}">${v}</div>`).join('');
 
   app.innerHTML = `
-    <h1>Campfire</h1>
-    <p class="subtitle">Round-robin stories around the fire. Write, pass, ruin, vote.</p>
+    <div class="home-hero-text">
+      <h1>Campfire</h1>
+      <p class="subtitle">Round-robin stories around the fire. Write, pass, ruin, vote.</p>
+    </div>
     <div class="hero" aria-hidden="true">
       <div class="smoke-stage">
         <div class="puff p1"></div><div class="puff p2"></div><div class="puff p3"></div>
@@ -194,7 +199,7 @@ function joinRoom() {
    SCREEN: LOBBY
    ========================================================== */
 function renderLobby() {
-  drafts = {}; backspaces = {}; autoReadyRound = -1; voteSent = false;
+  drafts = {}; backspaces = {}; autoReadyRound = -1; voteSent = false; themeSent = false;
   const s = S.settings;
   const chips = S.players.map(p => `
     <span class="player-chip">
@@ -241,6 +246,13 @@ function renderLobby() {
         <option value="on" ${s.anonymous ? 'selected' : ''}>On — nobody knows who wrote what until the results</option>
       </select>
     </div>
+    <div class="field">
+      <label>Director's Theme</label>
+      <select onchange="socket.emit('update_settings', { directorTheme: this.value === 'on' })">
+        <option value="off" ${!s.directorTheme ? 'selected' : ''}>Off — everyone starts their own story freely</option>
+        <option value="on" ${s.directorTheme ? 'selected' : ''}>On — the Camp Director picks a prompt everyone writes from</option>
+      </select>
+    </div>
     <div class="btn-row">
       <button onclick="socket.emit('start_game')" ${S.players.length < 3 ? 'disabled' : ''}>
         ${S.players.length < 3 ? 'Need at least 3 players' : 'Gather round — start the game'}
@@ -250,7 +262,7 @@ function renderLobby() {
   : `
     <p class="subtitle">
       ${s.seconds}s per round · ${s.votingSeconds}s to vote · ${s.minWords}${s.maxWords > 0 ? '–' + s.maxWords : '+'} words ·
-      ${s.visibility === 'full' ? 'whole story visible' : 'only the last segment visible'}${s.anonymous ? ' · anonymous authors' : ''}
+      ${s.visibility === 'full' ? 'whole story visible' : 'only the last segment visible'}${s.anonymous ? ' · anonymous authors' : ''}${s.directorTheme ? " · Director's Theme" : ''}
     </p>
     <p class="subtitle">Waiting for the fire-starter to begin…</p>`;
 
@@ -271,6 +283,67 @@ function renderLobby() {
 }
 
 /* ==========================================================
+   SCREEN: THEMING — the Camp Director picks a prompt (15s)
+   ========================================================== */
+let themeInterval = null;
+function renderTheming() {
+  clearInterval(themeInterval);
+  const t = S.theming;
+
+  if (t.youAreDirector) {
+    app.innerHTML = `
+      <div class="card">
+        <div class="timer-wrap">
+          <div class="timer-bar"><div class="timer-fill" id="theme-fill"></div></div>
+          <span class="timer-num" id="theme-num"></span>
+        </div>
+        ${directorPill()}
+        <h2>You're the Camp Director — set the theme</h2>
+        <p class="subtitle">Type a word, phrase, or sentence everyone must base their story on. Keep it short and evocative — "a haunted lighthouse", "the worst birthday ever", "betrayal".</p>
+        <input type="text" id="theme-input" maxlength="200" placeholder="The theme everyone writes from…" onkeydown="if(event.key==='Enter')sendTheme()">
+        <div class="btn-row">
+          <button onclick="sendTheme()">Lock in the theme</button>
+        </div>
+      </div>`;
+    document.getElementById('theme-input').focus();
+  } else {
+    app.innerHTML = `
+      <div class="card" style="text-align:center;">
+        <div class="timer-wrap">
+          <div class="timer-bar"><div class="timer-fill" id="theme-fill"></div></div>
+          <span class="timer-num" id="theme-num"></span>
+        </div>
+        ${directorPill()}
+        <h2>${esc(S.directorName || 'The Camp Director')} is choosing a theme…</h2>
+        <p class="subtitle">Get your storytelling brain warmed up. Whatever they pick, you'll all write from it.</p>
+      </div>`;
+  }
+
+  const tick = () => {
+    const fill = document.getElementById('theme-fill');
+    const num = document.getElementById('theme-num');
+    if (!S || !S.theming) return;
+    const left = Math.max(0, S.theming.endsAt - Date.now());
+    if (fill && num) {
+      fill.style.width = (left / 15000 * 100) + '%';
+      fill.classList.toggle('low', left <= 5000);
+      num.textContent = '0:' + String(Math.ceil(left / 1000)).padStart(2, '0');
+    }
+  };
+  tick();
+  themeInterval = setInterval(tick, 200);
+}
+
+let themeSent = false;
+function sendTheme() {
+  if (themeSent) return;
+  themeSent = true;
+  const input = document.getElementById('theme-input');
+  socket.emit('set_theme', { theme: input ? input.value : '' });
+  renderedKey = 'theme-sent';
+}
+
+/* ==========================================================
    SCREEN: WRITING
    ========================================================== */
 function statusListHTML() {
@@ -287,6 +360,12 @@ function directorPill() {
     : '';
 }
 
+function themeBanner() {
+  return S.theme
+    ? `<div class="theme-banner"><span class="theme-label">Theme</span> ${esc(S.theme)}</div>`
+    : '';
+}
+
 function renderWriting() {
   const w = S.writing;
   const s = S.settings;
@@ -295,6 +374,7 @@ function renderWriting() {
     app.innerHTML = `
       <div class="card" style="text-align:center;">
         ${directorPill()}
+        ${themeBanner()}
         <h2>Marshmallow's on the fire ✓</h2>
         <p class="subtitle">Round ${w.round + 1} of ${w.totalRounds} — the round ends when everyone's ready or time runs out.</p>
         <div class="btn-row" style="justify-content:center;">
@@ -326,6 +406,7 @@ function renderWriting() {
         <span class="timer-num" id="timer-num"></span>
       </div>
       ${directorPill()}
+      ${themeBanner()}
       <h2>Round ${w.round + 1} of ${w.totalRounds}</h2>
       ${context}
       <textarea id="segment-input" placeholder="Write your part here… (${limitLabel})" oninput="onType()"></textarea>
@@ -476,11 +557,13 @@ function renderVoting() {
   const rows = S.voting.options.map(o => `
     <div class="vote-row" id="row-${o.index}">
       <div class="who">
-        ${o.ownerName ? esc(o.ownerName) + "'s story" : 'Story ' + (o.index + 1)}
-        <span class="teaser">“${esc(o.teaser)}”</span>
+        <div class="who-name">${o.ownerName ? esc(o.ownerName) + "'s story" : 'Story ' + (o.index + 1)}</div>
+        <div class="opening">${esc(o.opening)}</div>
       </div>
-      <button class="mallow-btn" id="gold-${o.index}" title="Golden marshmallow — best story" onclick="pickGold(${o.index})">${mallow('gold')}</button>
-      <button class="mallow-btn" id="burnt-${o.index}" title="Burnt marshmallow — worst story" onclick="pickBurnt(${o.index})">${mallow('burnt')}</button>
+      <div class="mallow-stack">
+        <button class="mallow-btn" id="gold-${o.index}" title="Golden marshmallow — best story" onclick="pickGold(${o.index})">${mallow('gold')}</button>
+        <button class="mallow-btn" id="burnt-${o.index}" title="Burnt marshmallow — worst story" onclick="pickBurnt(${o.index})">${mallow('burnt')}</button>
+      </div>
     </div>`).join('');
 
   app.innerHTML = `
@@ -589,6 +672,7 @@ function renderResults() {
   const againBtn = (S.isHost || S.youAreDirector)
     ? `<button onclick="socket.emit('play_again')">Relight the fire (play again)</button>`
     : `<p class="subtitle">The Camp Director can relight the fire for another round.</p>`;
+  const exportBtn = `<button class="secondary" onclick="exportGame()">Download the stories</button>`;
 
   app.innerHTML = `
     <div class="winner-banner">
@@ -607,8 +691,49 @@ function renderResults() {
     <div class="card">
       <h2>Read them again</h2>
       ${allStories}
-      <div class="btn-row">${againBtn}</div>
+      <div class="btn-row">${exportBtn}${againBtn}</div>
     </div>`;
+}
+
+/* Build a readable text file of the whole game and download it */
+function exportGame() {
+  const r = S.results;
+  const L = [];
+  L.push('CAMPFIRE — Story Night');
+  L.push(new Date().toLocaleString());
+  if (S.theme) L.push('Theme: ' + S.theme);
+  L.push('');
+  L.push('========================================');
+  L.push('WINNER: ' + r.winners.join(' & '));
+  L.push('========================================');
+  L.push('');
+  r.stories.forEach((story, i) => {
+    L.push('----------------------------------------');
+    L.push((i + 1) + '. ' + story.ownerName + "'s story");
+    const t = r.tally.find(x => x.ownerName === story.ownerName);
+    if (t) L.push('   Votes: ' + t.up + ' golden, ' + t.down + ' burnt  (net ' + (t.score >= 0 ? '+' : '') + t.score + ')');
+    L.push('');
+    story.segments.forEach(seg => {
+      L.push('   [' + seg.author + ']');
+      // wrap each segment at ~76 chars for readability
+      seg.text.replace(/(.{1,72})(\s|$)/g, '$1\n').trim().split('\n').forEach(line => L.push('   ' + line));
+      L.push('');
+    });
+  });
+  L.push('========================================');
+  L.push('CAMPFIRE AWARDS');
+  r.awards.forEach(a => L.push('  ' + a.title + ' (' + a.desc + '): ' + a.name + ' — ' + a.value));
+  L.push('========================================');
+
+  const blob = new Blob([L.join('\n')], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'campfire-stories.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 /* ---------- Kick things off ---------- */

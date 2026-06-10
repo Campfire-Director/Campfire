@@ -7,6 +7,15 @@ end each story comes home to be read aloud and voted on with marshmallows.
 
 ## The campfire rules
 
+- **Director's Theme** (a lobby setting): the Camp Director gets 15 seconds
+  to type a prompt — a word, phrase, or sentence — that everyone must base
+  their story on. It stays pinned to every writing screen. Puts the opening
+  creative spark on one person instead of all.
+- **Story previews when voting**: each ballot shows the full opening line of
+  every story, so players vote on something they've actually read.
+- **Download the stories**: the results screen has a button that saves the
+  whole game — every story with its authors, the vote tallies, the theme,
+  and the campfire awards — as a text file to keep or paste into Discord.
 - **Anonymous mode** (a lobby setting): nobody knows who owns or wrote any
   story during the readings and voting — the Camp Director reads everything
   aloud — and all names are revealed in one big unmasking on the results

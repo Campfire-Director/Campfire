@@ -53,7 +53,10 @@ function createRoom() {
     hostId: null,        // whoever created the room (controls the lobby)
     directorId: null,    // the Camp Director — randomly crowned each game
     players: [],         // { id, name, socketId, connected }
-    settings: { seconds: 90, minWords: 10, maxWords: 60, visibility: 'full', votingSeconds: 10, anonymous: false },
+    settings: { seconds: 90, minWords: 10, maxWords: 60, visibility: 'full', votingSeconds: 10, anonymous: false, directorTheme: false },
+    theme: null,         // the Director's chosen prompt, when Director's Theme is on
+    themeEndsAt: null,
+    themeTimer: null,
     phase: 'lobby',      // lobby -> writing -> reading -> voting -> results
     seats: [],           // player ids in ring order (the passing order)
     stories: [],
@@ -131,6 +134,15 @@ function viewFor(room, playerId) {
     })),
   };
 
+  view.theme = room.theme; // null unless Director's Theme is set
+
+  if (room.phase === 'theming') {
+    view.theming = {
+      youAreDirector: room.directorId === playerId,
+      endsAt: room.themeEndsAt,
+    };
+  }
+
   if (room.phase === 'writing') {
     const n = room.seats.length;
     const seat = seatOf(room, playerId);
@@ -189,6 +201,7 @@ function viewFor(room, playerId) {
         index: i,
         ownerName: room.settings.anonymous ? null : getPlayer(room, room.seats[i]).name,
         teaser: story.segments[0].text.split(/\s+/).slice(0, 10).join(' ') + '…',
+        opening: story.segments[0].text, // full first segment, shown for an informed vote
       })).filter(o => o.index !== mySeat),
       waitingOn: room.seats
         .filter((pid, s) => room.votes[s] === undefined && getPlayer(room, pid).connected)
@@ -235,6 +248,24 @@ function broadcast(room) {
 }
 
 /* ---------- Round lifecycle ---------- */
+
+function startTheming(room) {
+  room.phase = 'theming';
+  room.theme = null;
+  room.themeEndsAt = Date.now() + 15 * 1000; // Director gets 15 seconds
+  clearTimeout(room.themeTimer);
+  room.themeTimer = setTimeout(() => finishTheming(room, null), 15 * 1000 + 1500);
+  broadcast(room);
+}
+
+function finishTheming(room, theme) {
+  if (room.phase !== 'theming') return;
+  clearTimeout(room.themeTimer);
+  theme = String(theme || '').trim().slice(0, 200);
+  room.theme = theme || '(the Director left it wide open — write anything!)';
+  room.phase = 'writing';
+  startWritingRound(room);
+}
 
 function startWritingRound(room) {
   room.pending = {};
@@ -353,6 +384,7 @@ io.on('connection', (socket) => {
     if (settings.votingSeconds !== undefined) s.votingSeconds = Math.min(120, Math.max(5, +settings.votingSeconds || 10));
     if (settings.visibility === 'full' || settings.visibility === 'last') s.visibility = settings.visibility;
     if (settings.anonymous !== undefined) s.anonymous = !!settings.anonymous;
+    if (settings.directorTheme !== undefined) s.directorTheme = !!settings.directorTheme;
     if (s.maxWords > 0 && s.maxWords < s.minWords) s.maxWords = s.minWords;
     broadcast(room);
   });
@@ -371,8 +403,22 @@ io.on('connection', (socket) => {
     room.round = 0;
     room.votes = {};
     room.readIndex = 0;
-    room.phase = 'writing';
-    startWritingRound(room);
+    room.theme = null;
+
+    if (room.settings.directorTheme) {
+      startTheming(room);
+    } else {
+      room.phase = 'writing';
+      startWritingRound(room);
+    }
+  });
+
+  // The Camp Director submits (or skips) the story theme
+  socket.on('set_theme', ({ theme }) => {
+    const room = myRoom();
+    if (!room || room.phase !== 'theming') return;
+    if (socket.data.playerId !== room.directorId) return;
+    finishTheming(room, theme);
   });
 
   // A player marks themselves ready, locking in their current text + stats
@@ -463,6 +509,7 @@ io.on('connection', (socket) => {
     room.round = 0;
     room.votes = {};
     room.directorId = null;
+    room.theme = null;
     broadcast(room);
   });
 
@@ -484,6 +531,7 @@ io.on('connection', (socket) => {
     if (room.players.every(p => !p.connected)) {
       clearTimeout(room.timer);
       clearTimeout(room.votingTimer);
+      clearTimeout(room.themeTimer);
       setTimeout(() => {
         if (rooms.has(room.code) && room.players.every(p => !p.connected)) {
           rooms.delete(room.code);
