@@ -65,8 +65,11 @@ function createRoom() {
     stats: {},           // per-seat totals for the campfire awards
     endsAt: null,
     timer: null,
+    paused: false,
+    pausedRemaining: 0,   // ms left on the clock when paused
     readIndex: 0,
     votes: {},           // seat -> { up, down } (golden + burnt marshmallow)
+    camperVotes: {},     // voterSeat -> playerId they crowned Best Camper
     votingEndsAt: null,
     votingTimer: null,
   };
@@ -163,6 +166,9 @@ function viewFor(room, playerId) {
       round: room.round,
       totalRounds: n,
       endsAt: room.endsAt,
+      paused: room.paused,
+      pausedRemaining: room.pausedRemaining,
+      anyDisconnected: room.seats.some(pid => !getPlayer(room, pid).connected),
       ready,
       readyCount: Object.keys(room.pending).length,
       total: n,
@@ -206,6 +212,9 @@ function viewFor(room, playerId) {
       waitingOn: room.seats
         .filter((pid, s) => room.votes[s] === undefined && getPlayer(room, pid).connected)
         .map(pid => getPlayer(room, pid).name),
+      campers: room.seats
+        .filter(pid => pid !== playerId)
+        .map(pid => ({ id: pid, name: getPlayer(room, pid).name })),
     };
   }
 
@@ -218,6 +227,18 @@ function viewFor(room, playerId) {
     });
     const scores = room.stories.map((_, i) => ups[i] - downs[i]);
     const top = Math.max(...scores);
+
+    // Best Overall Camper — most golden-marshmallow crowns (people, not stories)
+    const camperTally = {};
+    room.seats.forEach(pid => { camperTally[pid] = 0; });
+    Object.values(room.camperVotes).forEach(pid => {
+      if (camperTally[pid] !== undefined) camperTally[pid]++;
+    });
+    const camperRanked = room.seats
+      .map(pid => ({ name: getPlayer(room, pid).name, votes: camperTally[pid] }))
+      .sort((a, b) => b.votes - a.votes);
+    const bestCamperTop = camperRanked.length ? camperRanked[0].votes : 0;
+    const bestCampers = camperRanked.filter(c => c.votes === bestCamperTop && bestCamperTop > 0).map(c => c.name);
     view.results = {
       winners: room.stories.map((_, i) => i).filter(i => scores[i] === top)
         .map(i => getPlayer(room, room.seats[i]).name),
@@ -226,6 +247,8 @@ function viewFor(room, playerId) {
         up: ups[i], down: downs[i], score: scores[i],
       })).sort((a, b) => b.score - a.score),
       awards: computeAwards(room),
+      bestCampers,
+      camperTally: camperRanked,
       stories: room.stories.map((story, i) => ({
         ownerName: getPlayer(room, room.seats[i]).name,
         segments: story.segments.map(seg => ({
@@ -248,6 +271,15 @@ function broadcast(room) {
 }
 
 /* ---------- Round lifecycle ---------- */
+
+function resumeRound(room) {
+  if (!room.paused) return;
+  room.paused = false;
+  room.endsAt = Date.now() + room.pausedRemaining;
+  clearTimeout(room.timer);
+  room.timer = setTimeout(() => endWritingRound(room), room.pausedRemaining + 2000);
+  broadcast(room);
+}
 
 function startTheming(room) {
   room.phase = 'theming';
@@ -310,6 +342,7 @@ function endWritingRound(room) {
 function startVoting(room) {
   room.phase = 'voting';
   room.votes = {};
+  room.camperVotes = {};
   room.votingEndsAt = Date.now() + room.settings.votingSeconds * 1000;
   clearTimeout(room.votingTimer);
   room.votingTimer = setTimeout(() => endVoting(room), room.settings.votingSeconds * 1000 + 1500);
@@ -402,6 +435,8 @@ io.on('connection', (socket) => {
     room.stats = {};
     room.round = 0;
     room.votes = {};
+    room.camperVotes = {};
+    room.paused = false;
     room.readIndex = 0;
     room.theme = null;
 
@@ -411,6 +446,28 @@ io.on('connection', (socket) => {
       room.phase = 'writing';
       startWritingRound(room);
     }
+  });
+
+  // Pause the writing clock (host or Camp Director), e.g. to wait for a rejoin
+  socket.on('pause_round', () => {
+    const room = myRoom();
+    if (!room || room.phase !== 'writing' || room.paused) return;
+    const pid = socket.data.playerId;
+    if (pid !== room.hostId && pid !== room.directorId) return;
+    room.paused = true;
+    room.pausedRemaining = Math.max(0, room.endsAt - Date.now());
+    clearTimeout(room.timer);
+    // Safety net: auto-resume after 30s so a room can't be frozen forever
+    room.timer = setTimeout(() => resumeRound(room), 30 * 1000);
+    broadcast(room);
+  });
+
+  socket.on('resume_round', () => {
+    const room = myRoom();
+    if (!room || room.phase !== 'writing' || !room.paused) return;
+    const pid = socket.data.playerId;
+    if (pid !== room.hostId && pid !== room.directorId) return;
+    resumeRound(room);
   });
 
   // The Camp Director submits (or skips) the story theme
@@ -477,7 +534,7 @@ io.on('connection', (socket) => {
   });
 
   // Two marshmallows: up = golden (best story), down = burnt (worst story)
-  socket.on('cast_vote', ({ up, down }) => {
+  socket.on('cast_vote', ({ up, down, bestCamper }) => {
     const room = myRoom();
     if (!room || room.phase !== 'voting') return;
     const seat = seatOf(room, socket.data.playerId);
@@ -490,6 +547,12 @@ io.on('connection', (socket) => {
     if (up !== null && up === down) down = null; // can't golden AND burn the same story
 
     room.votes[seat] = { up, down };
+
+    // Best Overall Camper — a golden crown for a person (never yourself)
+    const myId = socket.data.playerId;
+    if (Number.isInteger(+bestCamper) && room.seats.includes(+bestCamper) && +bestCamper !== myId) {
+      room.camperVotes[seat] = +bestCamper;
+    }
 
     const stillWaiting = room.seats.some((pid, s) =>
       room.votes[s] === undefined && getPlayer(room, pid).connected);
@@ -508,6 +571,8 @@ io.on('connection', (socket) => {
     room.stats = {};
     room.round = 0;
     room.votes = {};
+    room.camperVotes = {};
+    room.paused = false;
     room.directorId = null;
     room.theme = null;
     broadcast(room);

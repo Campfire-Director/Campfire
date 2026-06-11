@@ -7,6 +7,20 @@ end each story comes home to be read aloud and voted on with marshmallows.
 
 ## The campfire rules
 
+- **Best Overall Camper** vote: alongside the story marshmallows, each player
+  casts one golden marshmallow for the camper who made the best additions
+  across all stories (no burnt marshmallows for people, and you can't pick
+  yourself). Crowned on the results screen and in the export.
+- **Floating countdown** during writing rounds: the timer is pinned to the
+  top of the screen so it stays visible even when a long story pushes the
+  page down.
+- **AFK warning**: a toast pops up at the 30-seconds-left mark if you haven't
+  readied up yet, so nobody times out by accident.
+- **Pause / resume**: if a camper drops mid-round, the host or Camp Director
+  can pause the clock (up to 30 seconds) to wait for them to rejoin, then
+  resume. The clock freezes exactly where it was.
+- **Draft recovery**: what you've typed is saved to your browser as you go,
+  so a wifi drop and rejoin restores your in-progress segment.
 - **Director's Theme** (a lobby setting): the Camp Director gets 15 seconds
   to type a prompt — a word, phrase, or sentence — that everyone must base
   their story on. It stays pinned to every writing screen. Puts the opening

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campfire — design studio</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+/* Studio-only helpers (the game never loads this page's extras) */
+.swatch-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch { width: 92px; font-size: 11px; color: var(--ink-soft); text-align: center; }
+.swatch .chip { height: 36px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 4px; }
+.vig-grid { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+.vig-grid > div { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+.demo-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 14px; }
+code { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Campfire design studio</h1>
+  <p class="subtitle">
+    Your workshop. Every graphic and UI piece in the game, in one place.
+    Edit <code>theme.css</code> (colors, fonts, layout) or <code>art.js</code> (the drawings),
+    save, and refresh this page — no need to play a game to see your changes.
+  </p>
+
+  <div class="card">
+    <h2>The campfire</h2>
+    <p class="subtitle">Drawn in <code>campfireSVG()</code> in <code>art.js</code>. Drag the slider to preview the fire at any point in the game — it burns down as the rounds go by.</p>
+    <div class="campfire" id="studio-fire" style="--fire: 1; width: 240px; margin: 0 auto;"></div>
+    <input type="range" min="0" max="100" value="100" oninput="setStage(this.value)" style="width: 100%;">
+    <p class="subtitle" id="stage-label" style="text-align: center;"></p>
+  </div>
+
+  <div class="card">
+    <h2>The smoke buffooneries</h2>
+    <p class="subtitle">
+      These drift up through the smoke on the home screen. They live in the
+      <code>VIGNETTES</code> array in <code>art.js</code> — each one is a small standalone SVG.
+      Edit one, or copy the pattern to add your own (it joins the rotation automatically).
+    </p>
+    <div class="vig-grid" id="vigs"></div>
+  </div>
+
+  <div class="card">
+    <h2>The marshmallows</h2>
+    <p class="subtitle">Drawn by <code>mallow(type, size)</code> in <code>art.js</code>. Golden = best-story vote, burnt = worst-story vote.</p>
+    <div class="demo-row" style="justify-content: center;" id="mallows"></div>
+  </div>
+
+  <div class="card">
+    <h2>Design tokens</h2>
+    <p class="subtitle">The variables at the top of <code>theme.css</code>. Change a value there and everything using it updates.</p>
+    <div class="swatch-row" id="swatches"></div>
+  </div>
+
+  <div class="card">
+    <h2>UI components</h2>
+    <p class="subtitle">The building blocks of every menu, styled by <code>theme.css</code>. What you see here is exactly what the game screens use.</p>
+
+    <div class="demo-row">
+      <button>Primary button</button>
+      <button class="secondary">Secondary button</button>
+      <button disabled>Disabled button</button>
+    </div>
+
+    <div class="demo-row">
+      <span class="player-chip"><span class="dot"></span> Connected camper ★</span>
+      <span class="player-chip"><span class="dot off"></span> Disconnected camper</span>
+      <span class="director-pill">Camp Director: Sam (you!)</span>
+    </div>
+
+    <div class="field" style="max-width: 320px;">
+      <label>A text input</label>
+      <input type="text" placeholder="Type something…">
+    </div>
+
+    <div class="timer-wrap" style="max-width: 420px;">
+      <div class="timer-bar"><div class="timer-fill" style="width: 62%;"></div></div>
+      <span class="timer-num">1:14</span>
+    </div>
+    <div class="timer-wrap" style="max-width: 420px;">
+      <div class="timer-bar"><div class="timer-fill low" style="width: 9%;"></div></div>
+      <span class="timer-num">0:07</span>
+    </div>
+
+    <div class="story-box" style="max-height: none;">
+      <div class="segment">
+        <span class="segment-author">Sam wrote:</span>
+        The story text looks like this — a serif face for campfire-tale energy. Change <code>--font-story</code> to restyle it.
+      </div>
+    </div>
+
+    <div class="theme-banner" style="max-width: 480px;">
+      <span class="theme-label">Theme</span> a haunted lighthouse
+    </div>
+
+    <div class="vote-row" style="max-width: 480px;">
+      <div class="who">
+        <div class="who-name">A votable story</div>
+        <div class="opening">It was a dark and stormy night, and the camel had absolutely no idea how it ended up holding the deed to a lighthouse it had never seen.</div>
+      </div>
+      <div class="mallow-stack">
+        <button class="mallow-btn picked-gold" id="demo-gold"></button>
+        <button class="mallow-btn" id="demo-burnt"></button>
+      </div>
+    </div>
+
+    <div class="awards" style="max-width: 480px;">
+      <div class="award-card">
+        <div class="award-title">The Novelist</div>
+        <div class="award-desc">Most words typed</div>
+        <div class="award-name">Sam</div>
+        <div class="award-value">214 words</div>
+      </div>
+      <div class="award-card">
+        <div class="award-title">The Demolitionist</div>
+        <div class="award-desc">Most backspaces</div>
+        <div class="award-name">Alex</div>
+        <div class="award-value">96 backspaces</div>
+      </div>
+    </div>
+
+    <div class="pause-bar" style="max-width: 480px;">
+      <span>⏸ Round paused — waiting for a camper to rejoin</span>
+      <button class="small">Resume now</button>
+    </div>
+
+    <p class="subtitle">Best Overall Camper chips (golden marshmallow per person):</p>
+    <div class="camper-grid">
+      <button class="camper-chip picked">★ Sam</button>
+      <button class="camper-chip">★ Alex</button>
+      <button class="camper-chip">★ Jordan</button>
+    </div>
+
+    <div style="text-align: center; margin-top: 16px;">
+      <p class="subtitle">The room code</p>
+      <div class="room-code">WXYZ</div>
+    </div>
+  </div>
+</div>
+
+<script src="art.js"></script>
+<script>
+// The campfire, with a stage slider
+const fire = document.getElementById('studio-fire');
+fire.innerHTML = campfireSVG();
+function setStage(v) {
+  const f = v / 100;
+  fire.style.setProperty('--fire', f);
+  const label = document.getElementById('stage-label');
+  label.textContent = f > 0.85 ? 'Round 1 — roaring blaze'
+    : f > 0.5 ? 'Mid-game — burning steady'
+    : f > 0.15 ? 'Late game — burning low'
+    : 'Final round — smoldering coals';
+}
+setStage(100);
+
+// Every vignette, side by side
+const vigs = document.getElementById('vigs');
+VIGNETTES.forEach(v => {
+  const d = document.createElement('div');
+  d.innerHTML = v;
+  vigs.appendChild(d);
+});
+
+// Marshmallows at a few sizes
+document.getElementById('mallows').innerHTML =
+  mallow('gold', 64) + mallow('burnt', 64) + mallow('gold', 26) + mallow('burnt', 26);
+document.getElementById('demo-gold').innerHTML = mallow('gold');
+document.getElementById('demo-burnt').innerHTML = mallow('burnt');
+
+// Token swatches, read live from theme.css
+const tokens = ['--bg','--card','--ink','--ink-soft','--accent','--danger','--good','--border',
+  '--flame-outer','--flame-mid','--flame-inner','--ember','--log','--smoke','--silhouette',
+  '--mallow-gold','--mallow-burnt','--stick'];
+const styles = getComputedStyle(document.documentElement);
+document.getElementById('swatches').innerHTML = tokens.map(t => `
+  <div class="swatch">
+    <div class="chip" style="background: var(${t});"></div>
+    ${t}
+  </div>`).join('');
+</script>
+</body>
+</html>

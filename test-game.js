@@ -71,9 +71,12 @@ function handleState(name, st) {
     if (st.voting.options.some(o => !o.opening || o.opening.length < 1)) fail('vote option missing opening-line preview');
     if (ANON && st.voting.options.some(o => o.ownerName !== null)) fail('anonymous mode leaked owners on the ballot');
     if (!ANON && st.voting.options.some(o => o.ownerName === name)) fail('voter can see own story');
+    if (!st.voting.campers || st.voting.campers.length < 1) fail('no Best Camper options offered');
+    if (st.voting.campers.some(c => c.name === name)) fail('player can vote themselves Best Camper');
     const up = st.voting.options[0].index;
     const down = st.voting.options[1].index;
-    setTimeout(() => clients[name].emit('cast_vote', { up, down }), 50);
+    const bestCamper = st.voting.campers[0].id; // everyone crowns the first listed camper
+    setTimeout(() => clients[name].emit('cast_vote', { up, down, bestCamper }), 50);
   }
 
   if (st.phase === 'results' && !done) {
@@ -84,6 +87,9 @@ function handleState(name, st) {
     if (ups !== 3 || downs !== 3) fail(`expected 3 golden + 3 burnt, got ${ups}/${downs}`);
     for (const t of r.tally) if (t.score !== t.up - t.down) fail('score math is off');
     if (r.awards.length !== 4) fail('expected 4 campfire awards, got ' + r.awards.length);
+    if (!r.bestCampers || r.bestCampers.length < 1) fail('no Best Overall Camper crowned despite votes');
+    const camperTotal = (r.camperTally || []).reduce((a, c) => a + c.votes, 0);
+    if (camperTotal !== 3) fail('expected 3 Best Camper votes, got ' + camperTotal);
     const novelist = r.awards.find(a => a.title === 'The Novelist');
     if (novelist.name !== 'Ana') fail('Novelist should be Ana (most words), got ' + novelist.name);
     const demo = r.awards.find(a => a.title === 'The Demolitionist');
@@ -94,6 +100,7 @@ function handleState(name, st) {
     console.log('Camp Director was:', directorSeen, THEME ? '(theme: ' + st.theme + ')' : '');
     console.log('Tally:', r.tally.map(t => `${t.ownerName} ${t.up}up/${t.down}down=${t.score >= 0 ? '+' : ''}${t.score}`).join('  '));
     console.log('Awards:', r.awards.map(a => `${a.title}: ${a.name} (${a.value})`).join(' | '));
+    console.log('Best Camper:', r.bestCampers.join(', '), '(' + r.camperTally.map(c => c.name + ':' + c.votes).join(' ') + ')');
     console.log('Winner(s):', r.winners.join(', '));
     console.log('ALL TESTS PASSED');
     process.exit(0);
