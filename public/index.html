@@ -10,6 +10,12 @@
 <div id="app"></div>
 <div id="banner" class="banner"></div>
 <div id="ready-badge" class="ready-badge"></div>
+<div id="float-timer" class="float-timer">
+  <div class="timer-bar"><div class="timer-fill" id="float-fill"></div></div>
+  <span class="timer-num" id="float-num"></span>
+  <div id="float-controls"></div>
+</div>
+<div id="toast" class="toast"></div>
 <div id="fire" class="fire-ambient campfire" style="--fire: 1;"></div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -30,6 +36,7 @@ let renderedKey = '';
 let timerInterval = null;
 let voteInterval = null;
 let autoReadyRound = -1;
+let afkWarnedRound = -1;
 let voteSent = false;
 let pendingUp = null;
 let pendingDown = null;
@@ -75,6 +82,7 @@ socket.on('disconnect', () => {
 /* ---------- Master render ---------- */
 function render() {
   if (!S) return renderHome();
+  if (S.phase !== 'reading') stopReadAloud();
   updateChrome();
   const key = screenKey();
   if (key === renderedKey) { patch(); return; }
@@ -91,7 +99,7 @@ function render() {
 }
 
 function screenKey() {
-  if (S.phase === 'writing') return 'writing-' + S.writing.round + '-' + S.writing.ready;
+  if (S.phase === 'writing') return 'writing-' + S.writing.round + '-' + S.writing.ready + '-' + S.writing.paused + '-' + S.writing.anyDisconnected;
   if (S.phase === 'reading') return 'reading-' + S.reading.index;
   if (S.phase === 'voting') return 'voting-' + S.voting.voted;
   if (S.phase === 'theming') return 'theming-' + S.theming.youAreDirector;
@@ -112,12 +120,14 @@ function patch() {
 
 /* The campfire and ready-fraction badge live outside the screens */
 function updateChrome() {
-  // Ready badge: visible to everyone during writing rounds
+  // Ready badge + floating timer: visible to everyone during writing rounds
+  const floatTimer = document.getElementById('float-timer');
   if (S && S.phase === 'writing') {
     readyBadge.style.display = 'flex';
     readyBadge.innerHTML = `${mallow('gold', 18)} ${S.writing.readyCount}/${S.writing.total} ready`;
   } else {
     readyBadge.style.display = 'none';
+    if (floatTimer) floatTimer.style.display = 'none';
   }
 
   // The fire dwindles round by round, down to coals at the final round
@@ -146,6 +156,10 @@ function renderHome() {
 
   const vigs = VIGNETTES.map((v, i) => `<div class="vignette v${i + 1}">${v}</div>`).join('');
 
+  // If they arrived via a shared link (/?room=WXYZ), prefill the code
+  const params = new URLSearchParams(location.search);
+  const linkedRoom = (params.get('room') || '').toUpperCase().slice(0, 4);
+
   app.innerHTML = `
     <div class="home-hero-text">
       <h1>Campfire</h1>
@@ -168,14 +182,18 @@ function renderHome() {
       </div>
       <div class="spacer"></div>
       <div class="field">
-        <label>Or join a fire with a room code</label>
-        <input type="text" id="code-input" maxlength="4" placeholder="e.g. WXYZ" style="text-transform: uppercase;">
+        <label>${linkedRoom ? 'Joining room' : 'Or join a fire with a room code'}</label>
+        <input type="text" id="code-input" maxlength="4" placeholder="e.g. WXYZ" style="text-transform: uppercase;" value="${esc(linkedRoom)}">
       </div>
       <div class="btn-row">
         <button class="secondary" onclick="joinRoom()">Join room</button>
       </div>
       <p class="error-msg" id="home-error"></p>
     </div>`;
+
+  // Focus the right field: name if we have a room waiting, else just name
+  const nameInput = document.getElementById('name-input');
+  if (nameInput) nameInput.focus();
 }
 
 function createRoom() {
@@ -199,7 +217,7 @@ function joinRoom() {
    SCREEN: LOBBY
    ========================================================== */
 function renderLobby() {
-  drafts = {}; backspaces = {}; autoReadyRound = -1; voteSent = false; themeSent = false;
+  drafts = {}; backspaces = {}; autoReadyRound = -1; voteSent = false; themeSent = false; themeTotalMs = 0;
   const s = S.settings;
   const chips = S.players.map(p => `
     <span class="player-chip">
@@ -266,11 +284,21 @@ function renderLobby() {
     </p>
     <p class="subtitle">Waiting for the fire-starter to begin…</p>`;
 
+  const joinLink = location.origin + '/?room=' + encodeURIComponent(S.code);
+
   app.innerHTML = `
-    <h1>Campfire</h1>
+    <div class="lobby-top">
+      <button class="secondary small" onclick="leaveLobby()">← Leave</button>
+      <h1>Campfire</h1>
+      <span style="width:64px;"></span>
+    </div>
     <div class="card" style="text-align:center;">
       <p class="subtitle">Tell your friends the room code</p>
       <div class="room-code">${esc(S.code)}</div>
+      <div class="join-link-row">
+        <input type="text" id="join-link" readonly value="${esc(joinLink)}" onclick="this.select()">
+        <button class="small" id="copy-link-btn" onclick="copyJoinLink()">Copy link</button>
+      </div>
     </div>
     <div class="card">
       <h2>Around the fire (${S.players.length}/8)</h2>
@@ -282,10 +310,31 @@ function renderLobby() {
     </div>`;
 }
 
+// Leave the room and return to the home screen
+function leaveLobby() {
+  save('sr_code', '');           // forget the room so auto-rejoin won't fire
+  try { socket.disconnect(); socket.connect(); } catch (e) {}
+  S = null;
+  renderHome();
+}
+
+// Copy the direct join link to the clipboard, with graceful fallback
+function copyJoinLink() {
+  const link = document.getElementById('join-link');
+  const btn = document.getElementById('copy-link-btn');
+  const done = () => { if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy link', 1800); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link.value).then(done).catch(() => { link.select(); document.execCommand('copy'); done(); });
+  } else {
+    link.select(); document.execCommand('copy'); done();
+  }
+}
+
 /* ==========================================================
    SCREEN: THEMING — the Camp Director picks a prompt (15s)
    ========================================================== */
 let themeInterval = null;
+let themeTotalMs = 0;
 function renderTheming() {
   clearInterval(themeInterval);
   const t = S.theming;
@@ -299,8 +348,11 @@ function renderTheming() {
         </div>
         ${directorPill()}
         <h2>You're the Camp Director — set the theme</h2>
-        <p class="subtitle">Type a word, phrase, or sentence everyone must base their story on. Keep it short and evocative — "a haunted lighthouse", "the worst birthday ever", "betrayal".</p>
+        <p class="subtitle">Type a word, phrase, or sentence everyone must base their story on. Keep it short and evocative — or tap one of the suggestions below if you're stuck.</p>
         <input type="text" id="theme-input" maxlength="200" placeholder="The theme everyone writes from…" onkeydown="if(event.key==='Enter')sendTheme()">
+        <div class="suggestion-row">
+          ${(t.suggestions || []).map(w => `<button class="suggestion-chip" onclick="useSuggestion(this)">${esc(w)}</button>`).join('')}
+        </div>
         <div class="btn-row">
           <button onclick="sendTheme()">Lock in the theme</button>
         </div>
@@ -319,19 +371,27 @@ function renderTheming() {
       </div>`;
   }
 
+  // Remember the full window the first render, so the bar scales correctly
+  if (!themeTotalMs) themeTotalMs = Math.max(1000, S.theming.endsAt - Date.now());
   const tick = () => {
     const fill = document.getElementById('theme-fill');
     const num = document.getElementById('theme-num');
     if (!S || !S.theming) return;
     const left = Math.max(0, S.theming.endsAt - Date.now());
     if (fill && num) {
-      fill.style.width = (left / 15000 * 100) + '%';
+      fill.style.width = (left / themeTotalMs * 100) + '%';
       fill.classList.toggle('low', left <= 5000);
-      num.textContent = '0:' + String(Math.ceil(left / 1000)).padStart(2, '0');
+      const sec = Math.ceil(left / 1000);
+      num.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
     }
   };
   tick();
   themeInterval = setInterval(tick, 200);
+}
+
+function useSuggestion(btn) {
+  const input = document.getElementById('theme-input');
+  if (input) { input.value = btn.textContent; input.focus(); }
 }
 
 let themeSent = false;
@@ -375,6 +435,7 @@ function renderWriting() {
       <div class="card" style="text-align:center;">
         ${directorPill()}
         ${themeBanner()}
+        ${pauseControlsHTML()}
         <h2>Marshmallow's on the fire ✓</h2>
         <p class="subtitle">Round ${w.round + 1} of ${w.totalRounds} — the round ends when everyone's ready or time runs out.</p>
         <div class="btn-row" style="justify-content:center;">
@@ -401,12 +462,9 @@ function renderWriting() {
 
   app.innerHTML = `
     <div class="card">
-      <div class="timer-wrap">
-        <div class="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
-        <span class="timer-num" id="timer-num"></span>
-      </div>
       ${directorPill()}
       ${themeBanner()}
+      ${pauseControlsHTML()}
       <h2>Round ${w.round + 1} of ${w.totalRounds}</h2>
       ${context}
       <textarea id="segment-input" placeholder="Write your part here… (${limitLabel})" oninput="onType()"></textarea>
@@ -417,9 +475,9 @@ function renderWriting() {
       <div class="status-list" id="status-list">${statusListHTML()}</div>
     </div>`;
 
-  // Restore the draft (e.g. after clicking "keep writing")
+  // Restore the draft — from memory, or from browser storage after a reconnect
   const input = document.getElementById('segment-input');
-  input.value = drafts[w.round] || '';
+  input.value = drafts[w.round] !== undefined ? drafts[w.round] : loadDraft(w.round);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Backspace' || e.key === 'Delete') {
       backspaces[w.round] = (backspaces[w.round] || 0) + 1;
@@ -432,31 +490,98 @@ function renderWriting() {
 
 function onType() {
   const input = document.getElementById('segment-input');
-  if (input && S.writing) drafts[S.writing.round] = input.value;
+  if (input && S.writing) {
+    drafts[S.writing.round] = input.value;
+    saveDraft(S.writing.round, input.value); // survive a wifi drop
+  }
   updateWordCount();
+}
+
+// Drafts are keyed by room code + round so different rooms don't collide
+function draftKey(round) { return 'sr_draft_' + (S ? S.code : '') + '_' + round; }
+function saveDraft(round, text) { save(draftKey(round), text); }
+function loadDraft(round) { return load(draftKey(round)); }
+function clearDrafts() {
+  try {
+    for (let i = 0; i < 20; i++) localStorage.removeItem('sr_draft_' + (S ? S.code : '') + '_' + i);
+  } catch (e) {}
 }
 
 function startCountdown(canAutoReady) {
   clearInterval(timerInterval);
   const tick = () => {
-    const fill = document.getElementById('timer-fill');
-    const num = document.getElementById('timer-num');
     if (!S || !S.writing) return;
+    const ft = document.getElementById('float-timer');
+    const fill = document.getElementById('float-fill');
+    const num = document.getElementById('float-num');
     const total = S.settings.seconds * 1000;
+
+    if (S.writing.paused) {
+      // Frozen: show the held time, no ticking, no auto-submit
+      const left = S.writing.pausedRemaining;
+      if (ft) ft.style.display = 'flex';
+      if (fill && num) {
+        fill.style.width = (left / total * 100) + '%';
+        fill.classList.add('paused');
+        num.textContent = '⏸ paused';
+      }
+      return;
+    }
+
     const left = Math.max(0, S.writing.endsAt - Date.now());
+    if (ft) ft.style.display = 'flex';
     if (fill && num) {
       fill.style.width = (left / total * 100) + '%';
       fill.classList.toggle('low', left <= 10000);
+      fill.classList.remove('paused');
       const sec = Math.ceil(left / 1000);
       num.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
     }
+
+    // AFK warning toast at the 30-second mark (only if you haven't readied)
+    if (canAutoReady && !S.writing.ready && left <= 30000 && left > 29000 && afkWarnedRound !== S.writing.round) {
+      afkWarnedRound = S.writing.round;
+      showToast('⏰ 30 seconds left — wrap up your part!');
+    }
+
     if (left <= 0 && canAutoReady && autoReadyRound !== S.writing.round) {
       autoReadyRound = S.writing.round;
-      goReady(true); // time's up — whatever's written goes on the fire
+      goReady(true);
     }
   };
   tick();
   timerInterval = setInterval(tick, 250);
+}
+
+// The pause/resume controls — only the host or Camp Director see the button
+function pauseControlsHTML() {
+  const w = S.writing;
+  if (!w) return '';
+  const mayControl = S.isHost || S.youAreDirector;
+  if (w.paused) {
+    return `<div class="pause-bar">
+      <span>⏸ Round paused${w.anyDisconnected ? ' — waiting for a camper to rejoin' : ''}</span>
+      ${mayControl ? `<button class="small" onclick="socket.emit('resume_round')">Resume now</button>` : ''}
+    </div>`;
+  }
+  if (w.anyDisconnected && mayControl) {
+    return `<div class="pause-bar subtle">
+      <span>A camper dropped — you can pause to wait for them.</span>
+      <button class="small secondary" onclick="socket.emit('pause_round')">Pause round</button>
+    </div>`;
+  }
+  return '';
+}
+
+// A brief toast notification, top-center
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
 }
 
 function updateWordCount() {
@@ -491,6 +616,7 @@ function goReady(timeRanOut) {
   const roundStart = S.writing.endsAt - S.settings.seconds * 1000;
   const seconds = Math.max(0, (Date.now() - roundStart) / 1000);
   socket.emit('ready', { text, backspaces: backspaces[round] || 0, seconds });
+  saveDraft(round, ''); // submitted — don't restore this on a later reconnect
   if (!timeRanOut) renderedKey = 'sending';
 }
 
@@ -505,10 +631,10 @@ function renderReading() {
       ${esc(seg.text)}
     </div>`).join('');
 
-  const canAdvance = r.youAreOwner || S.youAreDirector || S.isHost;
-  const advanceBtn = canAdvance
-    ? `<button onclick="socket.emit('advance_reading')">${r.index + 1 < r.total ? 'Next story' : 'Pass out the marshmallows (vote)'}</button>`
-    : `<p class="subtitle">${r.ownerName ? esc(r.ownerName) + ' or the Camp Director' : 'The Camp Director'} moves things along when the reading's done.</p>`;
+  const navControls = r.mayNavigate
+    ? `<button class="secondary" onclick="socket.emit('advance_reading', { dir: 'back' })" ${r.canGoBack ? '' : 'disabled'}>← Back</button>
+       <button onclick="socket.emit('advance_reading', { dir: 'next' })">${r.index + 1 < r.total ? 'Next story →' : 'Pass out the marshmallows (vote)'}</button>`
+    : `<p class="subtitle">${r.ownerName ? esc(r.ownerName) + ' or the Camp Director' : 'The Camp Director'} moves things along.</p>`;
 
   app.innerHTML = `
     <div class="card">
@@ -518,10 +644,42 @@ function renderReading() {
       ${r.ownerName ? '' : '<p class="subtitle">Anonymous mode — the Camp Director reads this one aloud.</p>'}
       <div class="story-box">${segments}</div>
       <div class="btn-row">
+        <button class="secondary" id="tts-btn" onclick="toggleReadAloud()">🔊 Read aloud</button>
         ${r.segments.some(seg => seg.author) ? `<button class="secondary" onclick="toggleAuthors(this)">Show who wrote what</button>` : ''}
-        ${advanceBtn}
+        ${navControls}
       </div>
     </div>`;
+
+  // Stop any in-progress speech when the story changes
+  stopReadAloud();
+}
+
+/* Text-to-speech with the browser's built-in voice. No server needed. */
+let ttsActive = false;
+function toggleReadAloud() {
+  if (!('speechSynthesis' in window)) {
+    showToast ? showToast('Text-to-speech isn\'t supported in this browser.') : alert('Text-to-speech not supported here.');
+    return;
+  }
+  const btn = document.getElementById('tts-btn');
+  if (ttsActive) { stopReadAloud(); return; }
+
+  const r = S.reading;
+  const fullText = r.segments.map(s => s.text).join(' ');
+  const utter = new SpeechSynthesisUtterance(fullText);
+  utter.rate = 0.95;
+  utter.onend = () => { ttsActive = false; if (btn) btn.textContent = '🔊 Read aloud'; };
+  utter.onerror = () => { ttsActive = false; if (btn) btn.textContent = '🔊 Read aloud'; };
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
+  ttsActive = true;
+  if (btn) btn.textContent = '⏹ Stop reading';
+}
+function stopReadAloud() {
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  ttsActive = false;
+  const btn = document.getElementById('tts-btn');
+  if (btn) btn.textContent = '🔊 Read aloud';
 }
 
 function toggleAuthors(btn) {
@@ -544,14 +702,20 @@ function renderVoting() {
   if (S.voting.voted) {
     app.innerHTML = `
       <div class="card" style="text-align:center;">
+        <div class="timer-wrap">
+          <div class="timer-bar"><div class="timer-fill" id="vote-fill"></div></div>
+          <span class="timer-num" id="vote-num"></span>
+        </div>
         <h2>Marshmallows handed out ✓</h2>
         <p class="subtitle" id="waiting-on">${waitingText()}</p>
       </div>`;
+    startVoteCountdown();
     return;
   }
 
   pendingUp = null;
   pendingDown = null;
+  pendingCamper = null;
   voteSent = false;
 
   const rows = S.voting.options.map(o => `
@@ -566,6 +730,11 @@ function renderVoting() {
       </div>
     </div>`).join('');
 
+  const camperChips = (S.voting.campers || []).map(c => `
+    <button class="camper-chip" id="camper-${c.id}" onclick="pickCamper(${c.id})">
+      ${mallow('gold', 18)} ${esc(c.name)}
+    </button>`).join('');
+
   app.innerHTML = `
     <div class="card">
       <div class="timer-wrap">
@@ -578,12 +747,25 @@ function renderVoting() {
         <span>${mallow('burnt', 20)} burnt = worst story</span>
       </div>
       ${rows}
+      <h2 style="margin-top:20px;">Best Overall Camper</h2>
+      <p class="subtitle">One golden marshmallow for whoever made the best additions across all the stories.</p>
+      <div class="camper-grid">${camperChips}</div>
       <div class="btn-row">
         <button id="lock-votes" onclick="lockVotes(false)" disabled>Hand them out</button>
       </div>
     </div>`;
 
   startVoteCountdown();
+}
+
+let pendingCamper = null;
+function pickCamper(id) {
+  pendingCamper = (pendingCamper === id) ? null : id;
+  (S.voting.campers || []).forEach(c => {
+    const el = document.getElementById('camper-' + c.id);
+    if (el) el.classList.toggle('picked', pendingCamper === c.id);
+  });
+  updateLockButton();
 }
 
 function pickGold(i) {
@@ -603,6 +785,10 @@ function paintVotes() {
     if (g) g.classList.toggle('picked-gold', pendingUp === o.index);
     if (b) b.classList.toggle('picked-burnt', pendingDown === o.index);
   });
+  updateLockButton();
+}
+
+function updateLockButton() {
   const lock = document.getElementById('lock-votes');
   if (lock) lock.disabled = (pendingUp === null || pendingDown === null);
 }
@@ -631,7 +817,7 @@ function lockVotes(timeRanOut) {
   if (!timeRanOut && (pendingUp === null || pendingDown === null)) return;
   voteSent = true;
   clearInterval(voteInterval);
-  socket.emit('cast_vote', { up: pendingUp, down: pendingDown });
+  socket.emit('cast_vote', { up: pendingUp, down: pendingDown, bestCamper: pendingCamper });
 }
 
 /* ==========================================================
@@ -674,6 +860,20 @@ function renderResults() {
     : `<p class="subtitle">The Camp Director can relight the fire for another round.</p>`;
   const exportBtn = `<button class="secondary" onclick="exportGame()">Download the stories</button>`;
 
+  const bc = r.bestCampers || [];
+  const camperRows = (r.camperTally || []).filter(c => c.votes > 0).map(c =>
+    `<div class="vote-tally"><span>${esc(c.name)}</span><span class="score">${mallow('gold', 16)} ${c.votes}</span></div>`).join('');
+  const bestCamperCard = bc.length
+    ? `<div class="card">
+        <h2>🏕️ Best Overall Camper</h2>
+        <div class="winner-banner" style="margin-bottom:12px;">
+          <div style="margin-bottom:4px;">${mallow('gold', 36)}</div>
+          <h1 style="font-size:22px;">${bc.map(esc).join(' & ')}</h1>
+        </div>
+        ${camperRows}
+      </div>`
+    : '';
+
   app.innerHTML = `
     <div class="winner-banner">
       <div style="margin-bottom: 6px;">${mallow('gold', 44)}</div>
@@ -688,6 +888,7 @@ function renderResults() {
       <h2>Campfire awards</h2>
       <div class="awards">${awards}</div>
     </div>
+    ${bestCamperCard}
     <div class="card">
       <h2>Read them again</h2>
       ${allStories}
@@ -723,6 +924,9 @@ function exportGame() {
   L.push('========================================');
   L.push('CAMPFIRE AWARDS');
   r.awards.forEach(a => L.push('  ' + a.title + ' (' + a.desc + '): ' + a.name + ' — ' + a.value));
+  if (r.bestCampers && r.bestCampers.length) {
+    L.push('  Best Overall Camper: ' + r.bestCampers.join(' & '));
+  }
   L.push('========================================');
 
   const blob = new Blob([L.join('\n')], { type: 'text/plain' });

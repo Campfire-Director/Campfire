@@ -305,3 +305,136 @@ body > #app > .subtitle,
   overflow-y: auto;
 }
 .mallow-stack { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ==========================================================
+   v3 ADDITIONS — floating timer, toast, pause, Best Camper
+   ========================================================== */
+
+/* --- Floating countdown bar, pinned to the top, always visible --- */
+.float-timer {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 20;
+  display: none;            /* shown only during writing rounds */
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(10, 15, 24, 0.82);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+}
+.float-timer .timer-bar { flex: 1; height: 8px; }
+.float-timer .timer-num { color: var(--ink); min-width: 64px; }
+.timer-fill.paused { background: var(--ink-soft); }
+/* Nudge the badge down so it doesn't collide with the floating bar */
+.ready-badge { top: 44px; }
+/* Push page content below the floating bar during play */
+body { scroll-padding-top: 48px; }
+
+/* --- Toast notification (AFK warning) --- */
+.toast {
+  position: fixed;
+  top: 56px; left: 50%;
+  transform: translateX(-50%) translateY(-12px);
+  z-index: 30;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* --- Pause bar inside the writing card --- */
+.pause-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(233, 143, 62, 0.16);
+  border: 1px solid rgba(233, 143, 62, 0.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  font-size: 14px;
+}
+.pause-bar.subtle {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border);
+  color: var(--ink-soft);
+}
+.pause-bar span { flex: 1; min-width: 160px; }
+button.small { font-size: 13px; padding: 6px 12px; }
+
+/* --- Best Overall Camper voting chips --- */
+.camper-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.camper-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 15px;
+}
+.camper-chip.picked {
+  border-color: var(--mallow-gold-edge);
+  background: rgba(240, 201, 135, 0.18);
+}
+
+/* ==========================================================
+   v4 ADDITIONS — lobby leave/share, theme suggestions, TTS
+   ========================================================== */
+
+/* --- Lobby top bar (Leave button + title) --- */
+.lobby-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lobby-top h1 { text-align: center; flex: 1; }
+
+/* --- Shareable join link row --- */
+.join-link-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.join-link-row input {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.join-link-row button { flex-shrink: 0; }
+
+/* --- Director's theme suggestion chips --- */
+.suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.suggestion-chip {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-family: var(--font-story);
+  font-size: 15px;
+}
+.suggestion-chip:hover { border-color: var(--accent); }
