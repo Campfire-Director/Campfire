@@ -21,10 +21,17 @@ end each story comes home to be read aloud and voted on with marshmallows.
   resume. The clock freezes exactly where it was.
 - **Draft recovery**: what you've typed is saved to your browser as you go,
   so a wifi drop and rejoin restores your in-progress segment.
-- **Director's Theme** (a lobby setting): the Camp Director gets 15 seconds
+- **Director's Theme** (a lobby setting): the Camp Director gets 45 seconds
   to type a prompt — a word, phrase, or sentence — that everyone must base
-  their story on. It stays pinned to every writing screen. Puts the opening
-  creative spark on one person instead of all.
+  their story on, or tap one of 3 randomly suggested prompts if they're
+  stuck. It stays pinned to every writing screen.
+- **Shareable join links**: the lobby shows a direct link (with a copy
+  button) that drops friends straight into the room — they just add a name.
+- **Leave lobby**: a back button in the lobby returns to the home screen.
+- **Read aloud**: on the results/reading screens, a button uses the browser's
+  built-in text-to-speech to read a story out loud.
+- **Reading navigation**: the leader can step backward and forward through
+  the stories during the reading phase, not just forward.
 - **Story previews when voting**: each ballot shows the full opening line of
   every story, so players vote on something they've actually read.
 - **Download the stories**: the results screen has a button that saves the

@@ -393,3 +393,48 @@ button.small { font-size: 13px; padding: 6px 12px; }
   border-color: var(--mallow-gold-edge);
   background: rgba(240, 201, 135, 0.18);
 }
+
+/* ==========================================================
+   v4 ADDITIONS — lobby leave/share, theme suggestions, TTS
+   ========================================================== */
+
+/* --- Lobby top bar (Leave button + title) --- */
+.lobby-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lobby-top h1 { text-align: center; flex: 1; }
+
+/* --- Shareable join link row --- */
+.join-link-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.join-link-row input {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.join-link-row button { flex-shrink: 0; }
+
+/* --- Director's theme suggestion chips --- */
+.suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.suggestion-chip {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-family: var(--font-story);
+  font-size: 15px;
+}
+.suggestion-chip:hover { border-color: var(--accent); }

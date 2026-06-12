@@ -29,6 +29,27 @@ function makeRoomCode() {
   return code;
 }
 
+// A grab-bag of evocative prompt words the Director can pick from
+// if they're stuck. Edit freely — more variety is better.
+const THEME_WORDS = [
+  'betrayal', 'a haunted lighthouse', 'the worst birthday', 'buried treasure',
+  'a wrong number', 'the last train', 'forbidden cheese', 'a talking cat',
+  'midnight snack', 'the broken promise', 'a stolen identity', 'one bad decision',
+  'the family secret', 'a desert mirage', 'the final exam', 'an unexpected guest',
+  'the time machine', 'a haunted vending machine', 'the dragon\'s diary',
+  'lost in the woods', 'the cursed sandwich', 'a message in a bottle',
+  'the heist gone wrong', 'an alien penpal', 'the last slice of pizza',
+  'a swapped briefcase', 'the lighthouse keeper', 'revenge of the houseplant',
+  'the wedding disaster', 'a ghost with regrets', 'the suspicious neighbor',
+  'an inheritance with strings', 'the underwater city', 'a deal with a goblin',
+];
+
+function pickThemeWords(n) {
+  const pool = [...THEME_WORDS];
+  shuffle(pool);
+  return pool.slice(0, n);
+}
+
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -83,6 +104,11 @@ function getPlayer(room, playerId) {
 
 function seatOf(room, playerId) {
   return room.seats.indexOf(playerId);
+}
+
+// The "leader" — host or Camp Director — drives shared navigation
+function pid_is_leader(room, playerId) {
+  return playerId === room.hostId || playerId === room.directorId;
 }
 
 // THE ROTATION RULE: in round r, the player in seat s writes the
@@ -143,6 +169,7 @@ function viewFor(room, playerId) {
     view.theming = {
       youAreDirector: room.directorId === playerId,
       endsAt: room.themeEndsAt,
+      suggestions: room.themeSuggestions || [],
     };
   }
 
@@ -185,10 +212,14 @@ function viewFor(room, playerId) {
     const story = room.stories[room.readIndex];
     const ownerId = room.seats[room.readIndex];
     const anon = room.settings.anonymous; // hide ALL authorship until results
+    const mayNavigate = pid_is_leader(room, playerId) ||
+      (!anon && ownerId === playerId);
     view.reading = {
       index: room.readIndex,
       total: room.stories.length,
       totalRounds: room.seats.length,
+      canGoBack: room.readIndex > 0,
+      mayNavigate,
       ownerName: anon ? null : getPlayer(room, ownerId).name,
       youAreOwner: anon ? false : ownerId === playerId,
       segments: story.segments.map(seg => ({
@@ -284,9 +315,10 @@ function resumeRound(room) {
 function startTheming(room) {
   room.phase = 'theming';
   room.theme = null;
-  room.themeEndsAt = Date.now() + 15 * 1000; // Director gets 15 seconds
+  room.themeSuggestions = pickThemeWords(3); // 3 fallback prompts to choose from
+  room.themeEndsAt = Date.now() + 45 * 1000; // Director gets 45 seconds
   clearTimeout(room.themeTimer);
-  room.themeTimer = setTimeout(() => finishTheming(room, null), 15 * 1000 + 1500);
+  room.themeTimer = setTimeout(() => finishTheming(room, null), 45 * 1000 + 1500);
   broadcast(room);
 }
 
@@ -515,15 +547,22 @@ io.on('connection', (socket) => {
     broadcast(room);
   });
 
-  socket.on('advance_reading', () => {
+  socket.on('advance_reading', ({ dir } = {}) => {
     const room = myRoom();
     if (!room || room.phase !== 'reading') return;
     const ownerId = room.seats[room.readIndex];
     const pid = socket.data.playerId;
-    // The Camp Director or host can always advance. The story's owner can
+    // The Camp Director or host can always navigate. The story's owner can
     // too — unless anonymous mode is on, where that would give them away.
     const ownerMayAdvance = !room.settings.anonymous && pid === ownerId;
     if (!ownerMayAdvance && pid !== room.directorId && pid !== room.hostId) return;
+
+    if (dir === 'back') {
+      // Step back to the previous story (never before the first)
+      room.readIndex = Math.max(0, room.readIndex - 1);
+      broadcast(room);
+      return;
+    }
 
     room.readIndex++;
     if (room.readIndex >= room.stories.length) {

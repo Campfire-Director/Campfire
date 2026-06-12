@@ -82,6 +82,7 @@ socket.on('disconnect', () => {
 /* ---------- Master render ---------- */
 function render() {
   if (!S) return renderHome();
+  if (S.phase !== 'reading') stopReadAloud();
   updateChrome();
   const key = screenKey();
   if (key === renderedKey) { patch(); return; }
@@ -155,6 +156,10 @@ function renderHome() {
 
   const vigs = VIGNETTES.map((v, i) => `<div class="vignette v${i + 1}">${v}</div>`).join('');
 
+  // If they arrived via a shared link (/?room=WXYZ), prefill the code
+  const params = new URLSearchParams(location.search);
+  const linkedRoom = (params.get('room') || '').toUpperCase().slice(0, 4);
+
   app.innerHTML = `
     <div class="home-hero-text">
       <h1>Campfire</h1>
@@ -177,14 +182,18 @@ function renderHome() {
       </div>
       <div class="spacer"></div>
       <div class="field">
-        <label>Or join a fire with a room code</label>
-        <input type="text" id="code-input" maxlength="4" placeholder="e.g. WXYZ" style="text-transform: uppercase;">
+        <label>${linkedRoom ? 'Joining room' : 'Or join a fire with a room code'}</label>
+        <input type="text" id="code-input" maxlength="4" placeholder="e.g. WXYZ" style="text-transform: uppercase;" value="${esc(linkedRoom)}">
       </div>
       <div class="btn-row">
         <button class="secondary" onclick="joinRoom()">Join room</button>
       </div>
       <p class="error-msg" id="home-error"></p>
     </div>`;
+
+  // Focus the right field: name if we have a room waiting, else just name
+  const nameInput = document.getElementById('name-input');
+  if (nameInput) nameInput.focus();
 }
 
 function createRoom() {
@@ -208,7 +217,7 @@ function joinRoom() {
    SCREEN: LOBBY
    ========================================================== */
 function renderLobby() {
-  drafts = {}; backspaces = {}; autoReadyRound = -1; voteSent = false; themeSent = false;
+  drafts = {}; backspaces = {}; autoReadyRound = -1; voteSent = false; themeSent = false; themeTotalMs = 0;
   const s = S.settings;
   const chips = S.players.map(p => `
     <span class="player-chip">
@@ -275,11 +284,21 @@ function renderLobby() {
     </p>
     <p class="subtitle">Waiting for the fire-starter to begin…</p>`;
 
+  const joinLink = location.origin + '/?room=' + encodeURIComponent(S.code);
+
   app.innerHTML = `
-    <h1>Campfire</h1>
+    <div class="lobby-top">
+      <button class="secondary small" onclick="leaveLobby()">← Leave</button>
+      <h1>Campfire</h1>
+      <span style="width:64px;"></span>
+    </div>
     <div class="card" style="text-align:center;">
       <p class="subtitle">Tell your friends the room code</p>
       <div class="room-code">${esc(S.code)}</div>
+      <div class="join-link-row">
+        <input type="text" id="join-link" readonly value="${esc(joinLink)}" onclick="this.select()">
+        <button class="small" id="copy-link-btn" onclick="copyJoinLink()">Copy link</button>
+      </div>
     </div>
     <div class="card">
       <h2>Around the fire (${S.players.length}/8)</h2>
@@ -291,10 +310,31 @@ function renderLobby() {
     </div>`;
 }
 
+// Leave the room and return to the home screen
+function leaveLobby() {
+  save('sr_code', '');           // forget the room so auto-rejoin won't fire
+  try { socket.disconnect(); socket.connect(); } catch (e) {}
+  S = null;
+  renderHome();
+}
+
+// Copy the direct join link to the clipboard, with graceful fallback
+function copyJoinLink() {
+  const link = document.getElementById('join-link');
+  const btn = document.getElementById('copy-link-btn');
+  const done = () => { if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy link', 1800); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link.value).then(done).catch(() => { link.select(); document.execCommand('copy'); done(); });
+  } else {
+    link.select(); document.execCommand('copy'); done();
+  }
+}
+
 /* ==========================================================
    SCREEN: THEMING — the Camp Director picks a prompt (15s)
    ========================================================== */
 let themeInterval = null;
+let themeTotalMs = 0;
 function renderTheming() {
   clearInterval(themeInterval);
   const t = S.theming;
@@ -308,8 +348,11 @@ function renderTheming() {
         </div>
         ${directorPill()}
         <h2>You're the Camp Director — set the theme</h2>
-        <p class="subtitle">Type a word, phrase, or sentence everyone must base their story on. Keep it short and evocative — "a haunted lighthouse", "the worst birthday ever", "betrayal".</p>
+        <p class="subtitle">Type a word, phrase, or sentence everyone must base their story on. Keep it short and evocative — or tap one of the suggestions below if you're stuck.</p>
         <input type="text" id="theme-input" maxlength="200" placeholder="The theme everyone writes from…" onkeydown="if(event.key==='Enter')sendTheme()">
+        <div class="suggestion-row">
+          ${(t.suggestions || []).map(w => `<button class="suggestion-chip" onclick="useSuggestion(this)">${esc(w)}</button>`).join('')}
+        </div>
         <div class="btn-row">
           <button onclick="sendTheme()">Lock in the theme</button>
         </div>
@@ -328,19 +371,27 @@ function renderTheming() {
       </div>`;
   }
 
+  // Remember the full window the first render, so the bar scales correctly
+  if (!themeTotalMs) themeTotalMs = Math.max(1000, S.theming.endsAt - Date.now());
   const tick = () => {
     const fill = document.getElementById('theme-fill');
     const num = document.getElementById('theme-num');
     if (!S || !S.theming) return;
     const left = Math.max(0, S.theming.endsAt - Date.now());
     if (fill && num) {
-      fill.style.width = (left / 15000 * 100) + '%';
+      fill.style.width = (left / themeTotalMs * 100) + '%';
       fill.classList.toggle('low', left <= 5000);
-      num.textContent = '0:' + String(Math.ceil(left / 1000)).padStart(2, '0');
+      const sec = Math.ceil(left / 1000);
+      num.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
     }
   };
   tick();
   themeInterval = setInterval(tick, 200);
+}
+
+function useSuggestion(btn) {
+  const input = document.getElementById('theme-input');
+  if (input) { input.value = btn.textContent; input.focus(); }
 }
 
 let themeSent = false;
@@ -580,10 +631,10 @@ function renderReading() {
       ${esc(seg.text)}
     </div>`).join('');
 
-  const canAdvance = r.youAreOwner || S.youAreDirector || S.isHost;
-  const advanceBtn = canAdvance
-    ? `<button onclick="socket.emit('advance_reading')">${r.index + 1 < r.total ? 'Next story' : 'Pass out the marshmallows (vote)'}</button>`
-    : `<p class="subtitle">${r.ownerName ? esc(r.ownerName) + ' or the Camp Director' : 'The Camp Director'} moves things along when the reading's done.</p>`;
+  const navControls = r.mayNavigate
+    ? `<button class="secondary" onclick="socket.emit('advance_reading', { dir: 'back' })" ${r.canGoBack ? '' : 'disabled'}>← Back</button>
+       <button onclick="socket.emit('advance_reading', { dir: 'next' })">${r.index + 1 < r.total ? 'Next story →' : 'Pass out the marshmallows (vote)'}</button>`
+    : `<p class="subtitle">${r.ownerName ? esc(r.ownerName) + ' or the Camp Director' : 'The Camp Director'} moves things along.</p>`;
 
   app.innerHTML = `
     <div class="card">
@@ -593,10 +644,42 @@ function renderReading() {
       ${r.ownerName ? '' : '<p class="subtitle">Anonymous mode — the Camp Director reads this one aloud.</p>'}
       <div class="story-box">${segments}</div>
       <div class="btn-row">
+        <button class="secondary" id="tts-btn" onclick="toggleReadAloud()">🔊 Read aloud</button>
         ${r.segments.some(seg => seg.author) ? `<button class="secondary" onclick="toggleAuthors(this)">Show who wrote what</button>` : ''}
-        ${advanceBtn}
+        ${navControls}
       </div>
     </div>`;
+
+  // Stop any in-progress speech when the story changes
+  stopReadAloud();
+}
+
+/* Text-to-speech with the browser's built-in voice. No server needed. */
+let ttsActive = false;
+function toggleReadAloud() {
+  if (!('speechSynthesis' in window)) {
+    showToast ? showToast('Text-to-speech isn\'t supported in this browser.') : alert('Text-to-speech not supported here.');
+    return;
+  }
+  const btn = document.getElementById('tts-btn');
+  if (ttsActive) { stopReadAloud(); return; }
+
+  const r = S.reading;
+  const fullText = r.segments.map(s => s.text).join(' ');
+  const utter = new SpeechSynthesisUtterance(fullText);
+  utter.rate = 0.95;
+  utter.onend = () => { ttsActive = false; if (btn) btn.textContent = '🔊 Read aloud'; };
+  utter.onerror = () => { ttsActive = false; if (btn) btn.textContent = '🔊 Read aloud'; };
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
+  ttsActive = true;
+  if (btn) btn.textContent = '⏹ Stop reading';
+}
+function stopReadAloud() {
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  ttsActive = false;
+  const btn = document.getElementById('tts-btn');
+  if (btn) btn.textContent = '🔊 Read aloud';
 }
 
 function toggleAuthors(btn) {

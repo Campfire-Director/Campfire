@@ -12,6 +12,7 @@ const readyRounds = {};
 const advancedReads = new Set();
 const votedNames = new Set();
 let directorSeen = null;
+let backTested = false;
 let done = false;
 
 function fail(msg) { console.error('TEST FAILED:', msg); process.exit(1); }
@@ -23,6 +24,10 @@ function handleState(name, st) {
     if (!st.theming.endsAt) fail('theming phase has no countdown');
     if (st.theming.youAreDirector && !themeSet) {
       themeSet = true;
+      if (!st.theming.suggestions || st.theming.suggestions.length !== 3) fail('expected 3 theme suggestions, got ' + (st.theming.suggestions||[]).length);
+      // verify the 45s window (endsAt should be ~45s out, definitely >30s)
+      const windowMs = st.theming.endsAt - Date.now();
+      if (windowMs < 30000) fail('theme window too short: ' + Math.round(windowMs/1000) + 's (expected ~45)');
       setTimeout(() => clients[name].emit('set_theme', { theme: 'a haunted lighthouse' }), 50);
     }
   }
@@ -51,7 +56,9 @@ function handleState(name, st) {
       if (st.reading.segments.some(s => s.author !== null)) fail('anonymous mode leaked segment authors');
     }
     if (st.youAreDirector) {
-      const key = 'read-' + st.reading.index;
+      if (!st.reading.mayNavigate) fail('director cannot navigate readings');
+      if (st.reading.index === 0 && st.reading.canGoBack) fail('canGoBack true on first story');
+      const key = 'read-' + st.reading.index + '-' + (backTested ? 'after' : 'pre');
       if (!advancedReads.has(key)) {
         advancedReads.add(key);
         if (st.reading.segments.length !== 3) fail('story has ' + st.reading.segments.length + ' segments');
@@ -59,7 +66,14 @@ function handleState(name, st) {
           const authors = new Set(st.reading.segments.map(s => s.author));
           if (authors.size !== 3) fail('story authors not distinct');
         }
-        setTimeout(() => clients[name].emit('advance_reading'), 50);
+        // On the 2nd story, test going BACK once before continuing forward
+        if (st.reading.index === 1 && !backTested) {
+          backTested = true;
+          if (!st.reading.canGoBack) fail('canGoBack should be true on story 2');
+          setTimeout(() => clients[name].emit('advance_reading', { dir: 'back' }), 50);
+        } else {
+          setTimeout(() => clients[name].emit('advance_reading', { dir: 'next' }), 50);
+        }
       }
     }
   }
