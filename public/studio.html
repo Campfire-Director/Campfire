@@ -92,6 +92,19 @@ code { background: var(--bg); border: 1px solid var(--border); border-radius: 6p
       </div>
     </div>
 
+    <p class="subtitle">Audio recorder (audio mode):</p>
+    <div class="recorder" style="max-width: 480px;">
+      <button class="rec-btn">● Start recording</button>
+      <span class="rec-status">Tap to record your part</span>
+    </div>
+
+    <p class="subtitle">Audio clip chain (reading, audio mode):</p>
+    <div class="clip-chain" style="max-width: 480px;">
+      <div class="clip-row"><span class="clip-num">1</span><span class="subtitle" style="flex:1;">▶ clip one</span></div>
+      <div class="clip-row"><span class="clip-num">2</span><span class="subtitle" style="flex:1;">▶ clip two</span></div>
+      <div class="clip-row"><span class="clip-num">3</span><span class="subtitle" style="flex:1;">▶ clip three</span></div>
+    </div>
+
     <div class="join-link-row" style="max-width: 480px;">
       <input type="text" readonly value="http://localhost:3000/?room=WXYZ">
       <button class="small">Copy link</button>

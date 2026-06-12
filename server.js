@@ -12,7 +12,11 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+// maxHttpBufferSize is raised so base64 audio clips fit through Socket.IO.
+// AUDIO MODE MEMORY NOTE: clips live in server RAM for the life of the room
+// and are discarded when it closes. Fine for game nights; for permanent
+// storage you'd offload clips to something like S3 instead.
+const io = new Server(server, { maxHttpBufferSize: 8 * 1024 * 1024 }); // 8 MB
 app.use(express.static(path.join(__dirname, 'public')));
 const PORT = process.env.PORT || 3000;
 
@@ -74,7 +78,7 @@ function createRoom() {
     hostId: null,        // whoever created the room (controls the lobby)
     directorId: null,    // the Camp Director — randomly crowned each game
     players: [],         // { id, name, socketId, connected }
-    settings: { seconds: 90, minWords: 10, maxWords: 60, visibility: 'full', votingSeconds: 10, anonymous: false, directorTheme: false },
+    settings: { seconds: 90, minWords: 10, maxWords: 60, visibility: 'full', votingSeconds: 10, anonymous: false, directorTheme: false, mode: 'text' },
     theme: null,         // the Director's chosen prompt, when Director's Theme is on
     themeEndsAt: null,
     themeTimer: null,
@@ -164,6 +168,7 @@ function viewFor(room, playerId) {
   };
 
   view.theme = room.theme; // null unless Director's Theme is set
+  view.mode = room.settings.mode; // 'text' or 'audio'
 
   if (room.phase === 'theming') {
     view.theming = {
@@ -181,12 +186,17 @@ function viewFor(room, playerId) {
     const ready = room.pending[seat] !== undefined;
 
     let context;
+    const audio = room.settings.mode === 'audio';
     if (room.round === 0) {
-      context = { mode: 'new', segments: [] };
+      context = { mode: 'new', segments: [], audio: [] };
+    } else if (audio) {
+      // True telephone: you hear ONLY the previous recording
+      const prev = story.segments[story.segments.length - 1];
+      context = { mode: 'last', segments: [], audio: [prev.audio || null] };
     } else if (room.settings.visibility === 'full') {
-      context = { mode: 'full', segments: story.segments.map(s => s.text) };
+      context = { mode: 'full', segments: story.segments.map(s => s.text), audio: [] };
     } else {
-      context = { mode: 'last', segments: [story.segments[story.segments.length - 1].text] };
+      context = { mode: 'last', segments: [story.segments[story.segments.length - 1].text], audio: [] };
     }
 
     view.writing = {
@@ -225,6 +235,7 @@ function viewFor(room, playerId) {
       segments: story.segments.map(seg => ({
         author: anon ? null : getPlayer(room, room.seats[seg.authorSeat]).name,
         text: seg.text,
+        audio: seg.audio || null,
       })),
     };
   }
@@ -357,7 +368,7 @@ function endWritingRound(room) {
     }
 
     const storyIdx = storyForSeat(room, seat, room.round);
-    room.stories[storyIdx].segments.push({ authorSeat: seat, text: sub.text });
+    room.stories[storyIdx].segments.push({ authorSeat: seat, text: sub.text, audio: sub.audio || null });
   }
 
   room.round++;
@@ -450,6 +461,7 @@ io.on('connection', (socket) => {
     if (settings.visibility === 'full' || settings.visibility === 'last') s.visibility = settings.visibility;
     if (settings.anonymous !== undefined) s.anonymous = !!settings.anonymous;
     if (settings.directorTheme !== undefined) s.directorTheme = !!settings.directorTheme;
+    if (settings.mode === 'text' || settings.mode === 'audio') s.mode = settings.mode;
     if (s.maxWords > 0 && s.maxWords < s.minWords) s.maxWords = s.minWords;
     broadcast(room);
   });
@@ -511,23 +523,35 @@ io.on('connection', (socket) => {
   });
 
   // A player marks themselves ready, locking in their current text + stats
-  socket.on('ready', ({ text, backspaces, seconds }) => {
+  socket.on('ready', ({ text, backspaces, seconds, audio }) => {
     const room = myRoom();
     if (!room || room.phase !== 'writing') return;
     const seat = seatOf(room, socket.data.playerId);
     if (seat === -1 || room.pending[seat] !== undefined) return;
 
-    text = String(text || '').trim().slice(0, 10000);
-    const max = room.settings.maxWords;
-    if (max > 0 && countWords(text) > max) text = truncateWords(text, max);
-    if (!text) text = '(…a thoughtful silence…)';
-
-    room.pending[seat] = {
-      text,
-      backspaces: Math.min(100000, Math.max(0, Math.floor(+backspaces) || 0)),
-      seconds: Math.min(3600, Math.max(0, +seconds || 0)),
-      real: true,
-    };
+    if (room.settings.mode === 'audio') {
+      // Expect a base64 data URL; cap at ~6MB to protect server memory
+      const ok = typeof audio === 'string' && audio.startsWith('data:audio') && audio.length < 6_000_000;
+      room.pending[seat] = {
+        text: ok ? '(audio recording)' : '(…no recording came through…)',
+        audio: ok ? audio : null,
+        backspaces: 0,
+        seconds: Math.min(3600, Math.max(0, +seconds || 0)),
+        real: ok,
+      };
+    } else {
+      text = String(text || '').trim().slice(0, 10000);
+      const max = room.settings.maxWords;
+      if (max > 0 && countWords(text) > max) text = truncateWords(text, max);
+      if (!text) text = '(…a thoughtful silence…)';
+      room.pending[seat] = {
+        text,
+        audio: null,
+        backspaces: Math.min(100000, Math.max(0, Math.floor(+backspaces) || 0)),
+        seconds: Math.min(3600, Math.max(0, +seconds || 0)),
+        real: true,
+      };
+    }
 
     // Everyone ready early? Skip the rest of the clock.
     if (Object.keys(room.pending).length >= room.seats.length) {

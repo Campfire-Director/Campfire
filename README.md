@@ -5,6 +5,23 @@ voice chat). Everyone writes the opening of a story, the stories secretly
 rotate, everyone continues whichever story lands in their hands, and at the
 end each story comes home to be read aloud and voted on with marshmallows.
 
+## Text or Audio mode
+
+In the lobby, the host picks **Story mode**:
+- **Text** — players type their segments (the classic experience).
+- **Audio** — players record their part with their microphone, telephone
+  style: when a story is passed to you, you hear **only the previous clip**,
+  then record your continuation. At the end, each story's clips play back
+  in order (auto-play, with manual controls). Recording uses the browser's
+  built-in microphone access — players approve the mic prompt once.
+
+**Audio mode memory note:** recordings are held in the server's memory for
+the life of the room and discarded when it closes — perfect for a game night,
+but they aren't saved anywhere permanent. The text export notes where audio
+segments were (the clips themselves can't go in a text file). If you ever
+want audio to persist, that's a larger change involving file storage (e.g.
+S3). The clip size is capped at ~6 MB per segment to protect server memory.
+
 ## The campfire rules
 
 - **Best Overall Camper** vote: alongside the story marshmallows, each player

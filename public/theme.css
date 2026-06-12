@@ -438,3 +438,71 @@ button.small { font-size: 13px; padding: 6px 12px; }
   font-size: 15px;
 }
 .suggestion-chip:hover { border-color: var(--accent); }
+
+/* ==========================================================
+   v5 ADDITIONS — audio mode (recorder, clips, playback chain)
+   ========================================================== */
+
+/* --- Audio clip player (used in writing context + reading) --- */
+.clip-player {
+  width: 100%;
+  margin: 10px 0;
+  height: 40px;
+}
+
+/* --- The recorder block on the writing screen --- */
+.recorder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 12px 0;
+}
+.rec-btn {
+  background: var(--danger);
+  color: #fff;
+  font-size: 17px;
+  padding: 14px 28px;
+  border-radius: 999px;
+}
+.rec-btn:hover { filter: brightness(1.08); }
+.rec-status {
+  font-size: 14px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* --- The clip chain on the reading screen --- */
+.clip-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+.clip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.clip-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.clip-row .clip-player { flex: 1; margin: 0; }

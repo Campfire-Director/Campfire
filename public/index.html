@@ -82,7 +82,7 @@ socket.on('disconnect', () => {
 /* ---------- Master render ---------- */
 function render() {
   if (!S) return renderHome();
-  if (S.phase !== 'reading') stopReadAloud();
+  if (S.phase !== 'reading') { stopReadAloud(); stopChain(); }
   updateChrome();
   const key = screenKey();
   if (key === renderedKey) { patch(); return; }
@@ -271,6 +271,13 @@ function renderLobby() {
         <option value="on" ${s.directorTheme ? 'selected' : ''}>On — the Camp Director picks a prompt everyone writes from</option>
       </select>
     </div>
+    <div class="field">
+      <label>Story mode</label>
+      <select onchange="socket.emit('update_settings', { mode: this.value })">
+        <option value="text" ${s.mode !== 'audio' ? 'selected' : ''}>✍️ Text — type your part</option>
+        <option value="audio" ${s.mode === 'audio' ? 'selected' : ''}>🎙️ Audio — record your part (telephone style)</option>
+      </select>
+    </div>
     <div class="btn-row">
       <button onclick="socket.emit('start_game')" ${S.players.length < 3 ? 'disabled' : ''}>
         ${S.players.length < 3 ? 'Need at least 3 players' : 'Gather round — start the game'}
@@ -280,7 +287,7 @@ function renderLobby() {
   : `
     <p class="subtitle">
       ${s.seconds}s per round · ${s.votingSeconds}s to vote · ${s.minWords}${s.maxWords > 0 ? '–' + s.maxWords : '+'} words ·
-      ${s.visibility === 'full' ? 'whole story visible' : 'only the last segment visible'}${s.anonymous ? ' · anonymous authors' : ''}${s.directorTheme ? " · Director's Theme" : ''}
+      ${s.visibility === 'full' ? 'whole story visible' : 'only the last segment visible'}${s.anonymous ? ' · anonymous authors' : ''}${s.directorTheme ? " · Director's Theme" : ''}${s.mode === 'audio' ? ' · 🎙️ audio mode' : ''}
     </p>
     <p class="subtitle">Waiting for the fire-starter to begin…</p>`;
 
@@ -447,9 +454,16 @@ function renderWriting() {
     return;
   }
 
+  const isAudio = S.mode === 'audio';
+
+  // Context: what got passed to you. In audio mode it's the previous clip.
   let context;
   if (w.context.mode === 'new') {
-    context = `<p class="subtitle">You're starting a fresh story. Set the scene, introduce someone, cause a problem — anything goes.</p>`;
+    context = `<p class="subtitle">You're starting a fresh story. ${isAudio ? 'Record the opening — set a scene, a character, a problem.' : 'Set the scene, introduce someone, cause a problem — anything goes.'}</p>`;
+  } else if (isAudio) {
+    const clip = w.context.audio && w.context.audio[0];
+    context = `<p class="subtitle">Listen to the part passed to you (telephone — you only hear the last clip), then continue the story in your own recording.</p>
+      ${clip ? `<audio class="clip-player" controls src="${clip}"></audio>` : '<p class="subtitle">(No previous clip came through — just keep the story going.)</p>'}`;
   } else if (w.context.mode === 'full') {
     context = `<p class="subtitle">A story has been passed to you. Here it is so far — keep it going!</p>
       <div class="story-box">${w.context.segments.map(t => `<div class="segment">${esc(t)}</div>`).join('')}</div>`;
@@ -460,6 +474,16 @@ function renderWriting() {
 
   const limitLabel = s.maxWords > 0 ? `${s.minWords}–${s.maxWords} words` : `at least ${s.minWords} words`;
 
+  // The input area differs by mode
+  const inputArea = isAudio
+    ? `<div class="recorder" id="recorder">
+         <button id="rec-btn" class="rec-btn" onclick="toggleRecord()">● Start recording</button>
+         <span class="rec-status" id="rec-status">Tap to record your part</span>
+         <audio class="clip-player" id="rec-playback" controls style="display:none;"></audio>
+       </div>`
+    : `<textarea id="segment-input" placeholder="Write your part here… (${limitLabel})" oninput="onType()"></textarea>
+       <p class="word-count" id="word-count"></p>`;
+
   app.innerHTML = `
     <div class="card">
       ${directorPill()}
@@ -467,25 +491,87 @@ function renderWriting() {
       ${pauseControlsHTML()}
       <h2>Round ${w.round + 1} of ${w.totalRounds}</h2>
       ${context}
-      <textarea id="segment-input" placeholder="Write your part here… (${limitLabel})" oninput="onType()"></textarea>
-      <p class="word-count" id="word-count"></p>
+      ${inputArea}
       <div class="btn-row">
         <button id="ready-btn" onclick="goReady(false)" disabled>I'm ready</button>
       </div>
       <div class="status-list" id="status-list">${statusListHTML()}</div>
     </div>`;
 
-  // Restore the draft — from memory, or from browser storage after a reconnect
-  const input = document.getElementById('segment-input');
-  input.value = drafts[w.round] !== undefined ? drafts[w.round] : loadDraft(w.round);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Backspace' || e.key === 'Delete') {
-      backspaces[w.round] = (backspaces[w.round] || 0) + 1;
-    }
-  });
-  updateWordCount();
-  startCountdown(true);
-  input.focus();
+  if (isAudio) {
+    resetRecorder();
+    startCountdown(true);
+  } else {
+    const input = document.getElementById('segment-input');
+    input.value = drafts[w.round] !== undefined ? drafts[w.round] : loadDraft(w.round);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        backspaces[w.round] = (backspaces[w.round] || 0) + 1;
+      }
+    });
+    updateWordCount();
+    startCountdown(true);
+    input.focus();
+  }
+}
+
+/* ==========================================================
+   AUDIO RECORDING (audio mode only)
+   Uses the browser's MediaRecorder. The finished clip is held
+   as a base64 data URL and sent with the 'ready' event.
+   ========================================================== */
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordedClip = null;   // base64 data URL of this round's recording
+let recording = false;
+
+function resetRecorder() {
+  recordedClip = null;
+  recording = false;
+  const btn = document.getElementById('ready-btn');
+  if (btn) btn.disabled = true;
+}
+
+async function toggleRecord() {
+  const btn = document.getElementById('rec-btn');
+  const status = document.getElementById('rec-status');
+  const playback = document.getElementById('rec-playback');
+  const readyBtn = document.getElementById('ready-btn');
+
+  if (recording) {
+    // Stop
+    mediaRecorder.stop();
+    return;
+  }
+
+  // Start
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop()); // release the mic
+      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      const reader = new FileReader();
+      reader.onload = () => {
+        recordedClip = reader.result; // data:audio/...;base64,...
+        if (playback) { playback.src = recordedClip; playback.style.display = 'block'; }
+        if (readyBtn) readyBtn.disabled = false;
+        if (status) status.textContent = 'Recorded! Listen back, or re-record.';
+        if (btn) btn.textContent = '● Re-record';
+      };
+      reader.readAsDataURL(blob);
+      recording = false;
+    };
+    mediaRecorder.start();
+    recording = true;
+    if (btn) btn.textContent = '■ Stop recording';
+    if (status) status.textContent = 'Recording… tap to stop.';
+    if (playback) playback.style.display = 'none';
+  } catch (err) {
+    if (status) status.textContent = 'Mic blocked — allow microphone access in your browser to record.';
+  }
 }
 
 function onType() {
@@ -610,13 +696,21 @@ function updateWordCount() {
 function goReady(timeRanOut) {
   if (!S || !S.writing || S.writing.ready) return;
   const round = S.writing.round;
-  const input = document.getElementById('segment-input');
-  const text = input ? input.value : (drafts[round] || '');
-  drafts[round] = text;
   const roundStart = S.writing.endsAt - S.settings.seconds * 1000;
   const seconds = Math.max(0, (Date.now() - roundStart) / 1000);
-  socket.emit('ready', { text, backspaces: backspaces[round] || 0, seconds });
-  saveDraft(round, ''); // submitted — don't restore this on a later reconnect
+
+  if (S.mode === 'audio') {
+    // If time ran out mid-recording, stop and let onstop send; otherwise send now
+    if (recording && mediaRecorder) { try { mediaRecorder.stop(); } catch (e) {} }
+    if (!recordedClip && !timeRanOut) return; // nothing to send yet
+    socket.emit('ready', { audio: recordedClip, seconds });
+  } else {
+    const input = document.getElementById('segment-input');
+    const text = input ? input.value : (drafts[round] || '');
+    drafts[round] = text;
+    socket.emit('ready', { text, backspaces: backspaces[round] || 0, seconds });
+    saveDraft(round, '');
+  }
   if (!timeRanOut) renderedKey = 'sending';
 }
 
@@ -625,33 +719,83 @@ function goReady(timeRanOut) {
    ========================================================== */
 function renderReading() {
   const r = S.reading;
-  const segments = r.segments.map(seg => `
-    <div class="segment">
-      ${seg.author ? `<span class="segment-author author-label" style="display:none;">${esc(seg.author)} wrote:</span>` : ''}
-      ${esc(seg.text)}
-    </div>`).join('');
+  const isAudio = S.mode === 'audio';
 
   const navControls = r.mayNavigate
     ? `<button class="secondary" onclick="socket.emit('advance_reading', { dir: 'back' })" ${r.canGoBack ? '' : 'disabled'}>← Back</button>
        <button onclick="socket.emit('advance_reading', { dir: 'next' })">${r.index + 1 < r.total ? 'Next story →' : 'Pass out the marshmallows (vote)'}</button>`
     : `<p class="subtitle">${r.ownerName ? esc(r.ownerName) + ' or the Camp Director' : 'The Camp Director'} moves things along.</p>`;
 
+  let body, controls;
+  if (isAudio) {
+    // The clip chain: one player per segment, played in sequence
+    body = `<div class="clip-chain" id="clip-chain">
+      ${r.segments.map((seg, i) => `
+        <div class="clip-row">
+          <span class="clip-num">${i + 1}</span>
+          ${seg.author ? `<span class="segment-author author-label" style="display:none;">${esc(seg.author)}</span>` : ''}
+          ${seg.audio ? `<audio class="clip-player" data-clip="${i}" controls src="${seg.audio}"></audio>` : '<span class="subtitle">(no recording)</span>'}
+        </div>`).join('')}
+    </div>`;
+    controls = `<button id="chain-play" onclick="playChain()">▶ Play all in order</button>`;
+  } else {
+    body = `<div class="story-box">${r.segments.map(seg => `
+      <div class="segment">
+        ${seg.author ? `<span class="segment-author author-label" style="display:none;">${esc(seg.author)} wrote:</span>` : ''}
+        ${esc(seg.text)}
+      </div>`).join('')}</div>`;
+    controls = `<button class="secondary" id="tts-btn" onclick="toggleReadAloud()">🔊 Read aloud</button>`;
+  }
+
   app.innerHTML = `
     <div class="card">
       ${directorPill()}
       <p class="subtitle">The fire is down to coals — story ${r.index + 1} of ${r.total}</p>
-      <h2>${r.ownerName ? esc(r.ownerName) + "'s story" : "A mystery camper's story"} ${r.youAreOwner ? "— that's you! Read it aloud!" : ''}</h2>
-      ${r.ownerName ? '' : '<p class="subtitle">Anonymous mode — the Camp Director reads this one aloud.</p>'}
-      <div class="story-box">${segments}</div>
+      <h2>${r.ownerName ? esc(r.ownerName) + "'s story" : "A mystery camper's story"} ${r.youAreOwner ? "— that's you!" : ''}</h2>
+      ${r.ownerName ? '' : '<p class="subtitle">Anonymous mode — authorship hidden until results.</p>'}
+      ${body}
       <div class="btn-row">
-        <button class="secondary" id="tts-btn" onclick="toggleReadAloud()">🔊 Read aloud</button>
+        ${controls}
         ${r.segments.some(seg => seg.author) ? `<button class="secondary" onclick="toggleAuthors(this)">Show who wrote what</button>` : ''}
         ${navControls}
       </div>
     </div>`;
 
-  // Stop any in-progress speech when the story changes
   stopReadAloud();
+  stopChain();
+
+  // Auto-play the chain when an audio story first appears
+  if (isAudio) setTimeout(() => playChain(), 400);
+}
+
+/* Play every clip in a story back-to-back (audio mode). */
+let chainPlaying = false;
+function playChain() {
+  const chain = document.getElementById('clip-chain');
+  if (!chain) return;
+  const players = Array.from(chain.querySelectorAll('audio'));
+  if (!players.length) return;
+  const btn = document.getElementById('chain-play');
+  stopChain();
+  chainPlaying = true;
+  if (btn) btn.textContent = '⏹ Stop';
+
+  let i = 0;
+  const playNext = () => {
+    if (!chainPlaying || i >= players.length) { stopChain(); return; }
+    const p = players[i];
+    p.onended = () => { i++; playNext(); };
+    const tryPlay = p.play();
+    if (tryPlay && tryPlay.catch) tryPlay.catch(() => { /* autoplay blocked — user can press play */ stopChain(); });
+  };
+  playNext();
+}
+function stopChain() {
+  chainPlaying = false;
+  const chain = document.getElementById('clip-chain');
+  if (chain) chain.querySelectorAll('audio').forEach(a => { a.onended = null; });
+  const btn = document.getElementById('chain-play');
+  if (btn) btn.textContent = '▶ Play all in order';
 }
 
 /* Text-to-speech with the browser's built-in voice. No server needed. */
@@ -916,8 +1060,12 @@ function exportGame() {
     L.push('');
     story.segments.forEach(seg => {
       L.push('   [' + seg.author + ']');
-      // wrap each segment at ~76 chars for readability
-      seg.text.replace(/(.{1,72})(\s|$)/g, '$1\n').trim().split('\n').forEach(line => L.push('   ' + line));
+      if (S.mode === 'audio') {
+        L.push('   (audio recording — clips aren\'t saved to this text file)');
+      } else {
+        // wrap each segment at ~76 chars for readability
+        seg.text.replace(/(.{1,72})(\s|$)/g, '$1\n').trim().split('\n').forEach(line => L.push('   ' + line));
+      }
       L.push('');
     });
   });
