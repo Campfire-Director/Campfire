@@ -9,6 +9,7 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
+const https = require('https');
 
 const app = express();
 const server = http.createServer(app);
@@ -54,6 +55,114 @@ function pickThemeWords(n) {
   return pool.slice(0, n);
 }
 
+/* ==========================================================
+   NEWS HEADLINES — pulled from public RSS feeds (BBC + CNN)
+   for the optional "News Headline" theme source. Headlines
+   are cached briefly so we don't hit the feeds every game.
+   NOTE: requires open outbound internet (works on Render;
+   blocked in some sandboxes). Always degrades gracefully —
+   if fetching fails, the Director just sees word suggestions.
+   ========================================================== */
+const NEWS_FEEDS = [
+  { name: 'BBC', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+  { name: 'CNN', url: 'https://rss.cnn.com/rss/edition_world.rss' },
+  { name: 'FOX', url: 'https://moxie.foxnews.com/google-publisher/latest.xml' },
+];
+let headlineCache = { at: 0, items: [] };
+const HEADLINE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function fetchUrl(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; CampfireGame/1.0)',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      },
+      timeout: 5000,
+    }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => resolve(data));
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    req.on('error', reject);
+  });
+}
+
+// Pull <title> values out of an RSS document (skipping the channel title)
+function parseHeadlines(xml, source) {
+  const titles = [...xml.matchAll(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/g)]
+    .map(m => m[1].trim())
+    .filter(Boolean);
+  // The first <title> is the feed's own name; drop it
+  return titles.slice(1).map(t => ({ text: t, source }));
+}
+
+async function getHeadlines() {
+  // Serve from cache if fresh
+  if (Date.now() - headlineCache.at < HEADLINE_TTL && headlineCache.items.length) {
+    return headlineCache.items;
+  }
+  const all = [];
+  await Promise.all(NEWS_FEEDS.map(async (feed) => {
+    try {
+      const xml = await fetchUrl(feed.url);
+      all.push(...parseHeadlines(xml, feed.name));
+    } catch (e) {
+      console.log('Headline fetch failed for ' + feed.name + ': ' + e.message);
+    }
+  }));
+  if (all.length) headlineCache = { at: Date.now(), items: all };
+  return all.length ? all : headlineCache.items; // fall back to last good cache
+}
+
+// Pick a handful of varied prompts for the Director to choose from
+function pickHeadlines(all, n) {
+  const pool = [...all];
+  shuffle(pool);
+  // Keep them a reasonable length for a story prompt
+  return pool.filter(h => h.text.length >= 12 && h.text.length <= 140).slice(0, n);
+}
+
+/* ==========================================================
+   REDDIT PROMPTS — post titles from comedy-friendly subreddits
+   via Reddit's public JSON endpoints. NSFW-flagged and pinned
+   posts are filtered out. Same graceful fallback as news:
+   if Reddit is unreachable, word suggestions carry the day.
+   ========================================================== */
+const REDDIT_SUBS = ['Showerthoughts', 'nottheonion', 'AskReddit'];
+let redditCache = { at: 0, items: [] };
+
+function parseRedditPosts(json, sub) {
+  try {
+    const posts = JSON.parse(json).data.children || [];
+    return posts
+      .map(p => p.data)
+      .filter(d => d && d.title && !d.over_18 && !d.stickied)
+      .map(d => ({ text: d.title.trim(), source: 'r/' + sub }));
+  } catch (e) {
+    return [];
+  }
+}
+
+async function getRedditPosts() {
+  if (Date.now() - redditCache.at < HEADLINE_TTL && redditCache.items.length) {
+    return redditCache.items;
+  }
+  const all = [];
+  await Promise.all(REDDIT_SUBS.map(async (sub) => {
+    try {
+      const body = await fetchUrl('https://www.reddit.com/r/' + sub + '/hot.json?limit=30&raw_json=1');
+      all.push(...parseRedditPosts(body, sub));
+    } catch (e) {
+      console.log('Reddit fetch failed for r/' + sub + ': ' + e.message);
+    }
+  }));
+  if (all.length) redditCache = { at: Date.now(), items: all };
+  return all.length ? all : redditCache.items;
+}
+
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -78,7 +187,7 @@ function createRoom() {
     hostId: null,        // whoever created the room (controls the lobby)
     directorId: null,    // the Camp Director — randomly crowned each game
     players: [],         // { id, name, socketId, connected }
-    settings: { seconds: 90, minWords: 10, maxWords: 60, visibility: 'full', votingSeconds: 10, anonymous: false, directorTheme: false, mode: 'text' },
+    settings: { seconds: 90, minWords: 10, maxWords: 60, visibility: 'full', votingSeconds: 10, anonymous: false, directorTheme: false, mode: 'text', themeSource: 'words' },
     theme: null,         // the Director's chosen prompt, when Director's Theme is on
     themeEndsAt: null,
     themeTimer: null,
@@ -175,6 +284,7 @@ function viewFor(room, playerId) {
       youAreDirector: room.directorId === playerId,
       endsAt: room.themeEndsAt,
       suggestions: room.themeSuggestions || [],
+      headlines: room.themeHeadlines || [], // [] unless News source + fetch succeeded
     };
   }
 
@@ -327,10 +437,24 @@ function startTheming(room) {
   room.phase = 'theming';
   room.theme = null;
   room.themeSuggestions = pickThemeWords(3); // 3 fallback prompts to choose from
+  room.themeHeadlines = [];
   room.themeEndsAt = Date.now() + 45 * 1000; // Director gets 45 seconds
   clearTimeout(room.themeTimer);
   room.themeTimer = setTimeout(() => finishTheming(room, null), 45 * 1000 + 1500);
   broadcast(room);
+
+  // If a live source (news or reddit) is selected, fetch in the background
+  // and push an update when prompts arrive. The phase starts immediately
+  // with word suggestions so the Director never waits on a slow feed.
+  const source = room.settings.themeSource;
+  if (source === 'news' || source === 'reddit') {
+    const loader = source === 'news' ? getHeadlines : getRedditPosts;
+    loader().then(all => {
+      if (room.phase !== 'theming') return; // they already moved on
+      room.themeHeadlines = pickHeadlines(all, 5);
+      broadcast(room);
+    }).catch(() => { /* source unavailable — word suggestions remain */ });
+  }
 }
 
 function finishTheming(room, theme) {
@@ -462,7 +586,20 @@ io.on('connection', (socket) => {
     if (settings.anonymous !== undefined) s.anonymous = !!settings.anonymous;
     if (settings.directorTheme !== undefined) s.directorTheme = !!settings.directorTheme;
     if (settings.mode === 'text' || settings.mode === 'audio') s.mode = settings.mode;
+    if (['words', 'news', 'reddit'].includes(settings.themeSource)) s.themeSource = settings.themeSource;
     if (s.maxWords > 0 && s.maxWords < s.minWords) s.maxWords = s.minWords;
+    broadcast(room);
+  });
+
+  // Host removes a player from the lobby (only in the lobby, not mid-game)
+  socket.on('kick_player', ({ name }) => {
+    const room = myRoom();
+    if (!room || room.phase !== 'lobby' || room.hostId !== socket.data.playerId) return;
+    const target = room.players.find(p => p.name.toLowerCase() === String(name || '').trim().toLowerCase());
+    if (!target || target.id === room.hostId) return; // can't kick yourself
+    // Tell the kicked player, then drop them
+    if (target.socketId) io.to(target.socketId).emit('kicked');
+    room.players = room.players.filter(p => p.id !== target.id);
     broadcast(room);
   });
 
@@ -553,8 +690,12 @@ io.on('connection', (socket) => {
       };
     }
 
-    // Everyone ready early? Skip the rest of the clock.
-    if (Object.keys(room.pending).length >= room.seats.length) {
+    // All *connected* players ready early? Skip the rest of the clock.
+    // (A disconnected player can never ready up, so we don't wait on them —
+    // their segment becomes a placeholder when the round ends.)
+    const connectedSeats = room.seats.filter(pid => getPlayer(room, pid).connected);
+    const readyConnected = connectedSeats.filter((pid) => room.pending[seatOf(room, pid)] !== undefined);
+    if (readyConnected.length >= connectedSeats.length) {
       endWritingRound(room);
     } else {
       broadcast(room);
@@ -653,6 +794,16 @@ io.on('connection', (socket) => {
       room.players = room.players.filter(p => p.id !== player.id);
       if (room.hostId === player.id && room.players.length > 0) {
         room.hostId = room.players[0].id;
+      }
+    } else {
+      // Mid-game: if the host or Camp Director drops, hand their control to
+      // a still-connected player so the game can't stall (the leader is who
+      // advances readings and starts a new game). We only reassign control
+      // roles — the Director's authorship of stories stays as it was.
+      const firstConnected = room.players.find(p => p.connected);
+      if (firstConnected) {
+        if (room.hostId === player.id) room.hostId = firstConnected.id;
+        if (room.directorId === player.id) room.directorId = firstConnected.id;
       }
     }
 

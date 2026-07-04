@@ -22,6 +22,35 @@ segments were (the clips themselves can't go in a text file). If you ever
 want audio to persist, that's a larger change involving file storage (e.g.
 S3). The clip size is capped at ~6 MB per segment to protect server memory.
 
+## The title screen
+
+The home screen is a hand-painted starry-night campfire scene (all inline
+SVG/CSS, no image files): a swirling Van Gogh-style sky with spiral stars and
+a crescent moon, layered pine forest with a peeking raccoon and bigfoot, a
+flying owl, a shooting star, a vector campfire with a log ring, drifting smoke
+and rising embers, an arched floating "CAMPFIRE" wordmark, and two rustic
+wooden trail signs holding the create/join form and a **camper picker**. The
+scene builders live in `art.js` (sceneSky, sceneFireSVG, sceneTree, etc.);
+the keyframes and layout are in `theme.css` (the "v8 — TITLE SCREEN" block).
+
+The camper picker is currently cosmetic — your choice is saved locally and
+will feed the planned avatar/lobby feature. All the create-room, join-room,
+and shared-link behavior works exactly as before.
+
+## Reliability & host tools
+
+- **Host/Director hand-off:** if the host or Camp Director disconnects
+  mid-game, their control (advancing readings, starting a new game) passes
+  automatically to a still-connected player, so a game can never stall.
+- **Smart early-skip:** a writing round ends as soon as every *connected*
+  player is ready — it no longer waits on the full clock just because someone
+  disconnected.
+- **Kick button:** the host can remove a player from the lobby (the × on
+  their name chip).
+- **Quick presets:** one-tap ⚡ Quick / 🏕️ Standard / 🔥 Chaos buttons set
+  the timer, word limits, voting time, and visibility all at once.
+- **How to play:** a rules overlay any player can open from the lobby.
+
 ## The campfire rules
 
 - **Best Overall Camper** vote: alongside the story marshmallows, each player
@@ -42,6 +71,17 @@ S3). The clip size is capped at ~6 MB per segment to protect server memory.
   to type a prompt — a word, phrase, or sentence — that everyone must base
   their story on, or tap one of 3 randomly suggested prompts if they're
   stuck. It stays pinned to every writing screen.
+  - **Theme inspiration** sub-setting, three sources:
+    - "Random words" — quirky short prompts from the built-in list.
+    - "📰 News headlines" — real current headlines pulled from BBC, CNN,
+      and Fox public RSS feeds; ~5 offered for the Director to pick from.
+    - "👽 Reddit posts" — real post titles from r/Showerthoughts,
+      r/nottheonion, and r/AskReddit for comedic effect. NSFW-flagged and
+      pinned posts are filtered out automatically.
+    All live sources cache for 5 minutes and silently fall back to word
+    prompts if unreachable, so a game never stalls. (Live fetching requires
+    open outbound internet — works on Render; blocked in some sandboxes.)
+    The subreddit list is the REDDIT_SUBS array in server.js — edit freely.
 - **Shareable join links**: the lobby shows a direct link (with a copy
   button) that drops friends straight into the room — they just add a name.
 - **Leave lobby**: a back button in the lobby returns to the home screen.
