@@ -438,3 +438,314 @@ button.small { font-size: 13px; padding: 6px 12px; }
   font-size: 15px;
 }
 .suggestion-chip:hover { border-color: var(--accent); }
+
+/* ==========================================================
+   v5 ADDITIONS — audio mode (recorder, clips, playback chain)
+   ========================================================== */
+
+/* --- Audio clip player (used in writing context + reading) --- */
+.clip-player {
+  width: 100%;
+  margin: 10px 0;
+  height: 40px;
+}
+
+/* --- The recorder block on the writing screen --- */
+.recorder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 12px 0;
+}
+.rec-btn {
+  background: var(--danger);
+  color: #fff;
+  font-size: 17px;
+  padding: 14px 28px;
+  border-radius: 999px;
+}
+.rec-btn:hover { filter: brightness(1.08); }
+.rec-status {
+  font-size: 14px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* --- The clip chain on the reading screen --- */
+.clip-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+.clip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.clip-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.clip-row .clip-player { flex: 1; margin: 0; }
+
+/* ==========================================================
+   v6 ADDITIONS — news headline theme picker
+   ========================================================== */
+.headline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.headline-chip {
+  text-align: left;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: var(--font-story);
+  font-size: 15px;
+  line-height: 1.4;
+}
+.headline-chip:hover { border-color: var(--accent); }
+.headline-source {
+  display: inline-block;
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ==========================================================
+   v7 ADDITIONS — kick button, presets, how-to overlay
+   ========================================================== */
+
+/* --- Kick button on player chips (host only) --- */
+.chip-kick {
+  background: transparent;
+  color: var(--ink-soft);
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 2px;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chip-kick:hover { background: var(--danger); color: #fff; }
+
+/* --- Settings preset buttons --- */
+.preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.preset-btn {
+  flex: 1;
+  min-width: 92px;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.preset-btn:hover { border-color: var(--accent); }
+
+/* --- How-to-play overlay --- */
+.howto-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(4, 8, 14, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.howto-card {
+  background: var(--card);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  max-width: 460px;
+  width: 100%;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+.howto-list { margin: 12px 0 8px; padding-left: 22px; }
+.howto-list li { margin-bottom: 12px; line-height: 1.5; }
+.howto-list li b { color: var(--accent); }
+
+/* ==========================================================
+   v8 — TITLE SCREEN SCENE (renderHome starry-night campfire)
+   ========================================================== */
+@keyframes cf-twinkle { 0%,100% { opacity:0.2; transform:scale(0.8); } 50% { opacity:0.9; transform:scale(1.15); } }
+@keyframes cf-spin { 0% { transform:rotate(0deg); } 100% { transform:rotate(360deg); } }
+@keyframes cf-spin-rev { 0% { transform:rotate(360deg); } 100% { transform:rotate(0deg); } }
+@keyframes cf-drift { 0% { transform:translateX(-14px); } 100% { transform:translateX(14px); } }
+@keyframes cf-letter-float { 0% { transform:translateY(0px); } 100% { transform:translateY(-9px); } }
+@keyframes cf-smoke-rise {
+  0% { transform:translate(-50%,0) scale(0.5); opacity:0; }
+  10% { opacity:0.5; }
+  55% { transform:translate(calc(-50% + 46px),-55vh) scale(1.3); opacity:0.42; }
+  85% { opacity:0.3; }
+  100% { transform:translate(calc(-50% + 24px),-78vh) scale(2); opacity:0; }
+}
+@keyframes cf-pool { 0% { transform:translate(-3%,0) scale(1); } 100% { transform:translate(3%,-4px) scale(1.07); } }
+@keyframes cf-ember-rise {
+  0% { transform:translate(0,0) scale(1); opacity:0; }
+  10% { opacity:0.95; } 60% { opacity:0.7; }
+  100% { transform:translate(26px,-340px) scale(0.3); opacity:0; }
+}
+@keyframes cf-sway { 0% { transform:rotate(-0.7deg); } 100% { transform:rotate(0.7deg); } }
+@keyframes cff-sway { 0%,100% { transform:rotate(-1.4deg); } 50% { transform:rotate(1.4deg); } }
+@keyframes cff-flick {
+  0% { transform:scaleY(1) scaleX(1) translateY(0); }
+  22% { transform:scaleY(1.06) scaleX(.965) translateY(-4px); }
+  46% { transform:scaleY(.975) scaleX(1.03) translateY(1px); }
+  70% { transform:scaleY(1.07) scaleX(.955) translateY(-5px); }
+  100% { transform:scaleY(1) scaleX(1) translateY(0); }
+}
+@keyframes cff-core { 0%,100% { transform:scaleY(1) translateY(0); opacity:.95; } 50% { transform:scaleY(1.1) translateY(-3px); opacity:1; } }
+@keyframes cff-tongue { 0%,100% { transform:scaleY(.85) translateY(4px); opacity:.5; } 40% { transform:scaleY(1.15) translateY(-6px); opacity:.95; } 70% { transform:scaleY(.95) translateY(-1px); opacity:.8; } }
+@keyframes cff-coal { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+@keyframes cf-owl-fly {
+  0%,62% { transform:translate(-160px,30px); opacity:0; }
+  63% { opacity:0.9; } 79% { opacity:0.9; }
+  80% { transform:translate(calc(100vw + 160px),-60px); opacity:0; }
+  100% { transform:translate(-160px,30px); opacity:0; }
+}
+@keyframes cf-owl-flap { 0% { transform:rotate(14deg); } 100% { transform:rotate(-22deg); } }
+@keyframes cf-bigfoot-peek { 0%,71% { transform:translateX(105px); } 75%,86% { transform:translateX(18px); } 90%,100% { transform:translateX(105px); } }
+@keyframes cf-star-shoot { 0%,88% { transform:translate(0,0); opacity:0; } 89% { opacity:0.9; } 93% { transform:translate(-260px,120px); opacity:0; } 100% { transform:translate(0,0); opacity:0; } }
+@keyframes cf-tail-swish { 0% { transform:rotate(0deg); } 100% { transform:rotate(-10deg); } }
+
+/* The full-viewport title stage */
+.home-stage {
+  position: relative; width: 100%; min-height: 100vh;
+  overflow: hidden; background: #14100d;
+}
+/* create/join inputs inside the wooden sign */
+.sign-input {
+  width: 100%; height: 42px; font-family: inherit; font-size: 15px;
+  padding: 0 12px; border: 1px solid rgba(46,29,15,0.5); border-radius: 8px;
+  background: rgba(20,16,13,0.5); color: #f1eee3;
+}
+.sign-btn {
+  width: 100%; height: 45px; font-family: inherit; font-size: 15px; font-weight: 600;
+  border: none; border-radius: 10px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink);
+}
+.sign-btn.secondary { background: transparent; color: #f1e6d4; border: 1px solid rgba(46,29,15,0.7); }
+.camper-avatar-btn {
+  background: rgba(24,15,7,0.45); border: 2px solid; border-radius: 10px;
+  padding: 4px 2px 2px; cursor: pointer; line-height: 0;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.camper-avatar-btn:hover { border-color: rgba(233,143,62,0.75) !important; }
+
+/* --- Full-bleed home mode ---------------------------------------
+   Every game screen lives in the centered 640px #app column, which
+   is right for menus and writing — but the title scene needs the
+   whole window. When the home screen renders, index.html puts an
+   `is-home` class on <body>; these rules release the scene from the
+   column. (The :has() selector is a pure-CSS backup for the same.) */
+body.is-home,
+body:has(.home-stage) {
+  display: block;
+  padding: 0;
+}
+body.is-home #app,
+body:has(.home-stage) #app {
+  max-width: none;
+  width: 100%;
+}
+
+/* The arched wordmark + tagline scale with the window instead of
+   being locked at the 92px desktop design size */
+.home-title {
+  display: flex; justify-content: center; align-items: flex-start; gap: 2px;
+  font-family: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold',
+               'Hiragino Maru Gothic ProN', system-ui, sans-serif;
+  font-weight: 900;
+  font-size: clamp(42px, 9vw, 92px);
+  line-height: 1; letter-spacing: 2px; color: #fbf7ec; margin: 0;
+}
+.home-tagline {
+  margin-top: clamp(24px, 5.5vw, 54px);
+  font-size: clamp(14px, 2vw, 17px);
+  color: #d9d4c6;
+  text-shadow: 0 1px 8px rgba(0,0,0,.85), 0 2px 14px rgba(0,0,0,.7);
+  padding: 0 14px;
+}
+
+/* The wooden signs size themselves to the space available instead
+   of a fixed 600px + 360px (which is what got clipped before) */
+.home-signs {
+  width: min(1010px, calc(100% - 20px));
+  justify-content: center;
+}
+.home-sign-form  { flex: 1 1 560px; min-width: 0; max-width: 600px; }
+.home-sign-avatar { flex: 0 1 360px; min-width: 290px; }
+
+/* --- Tablets & phones (≤900px window) ----------------------------
+   The painted scene keeps the first screenful to itself; the signs
+   drop out of the overlay, stack, and the page scrolls down to them.
+   The fire is pinned to the visible scene (not a % of the taller
+   page) so the signs never sit on top of it. */
+@media (max-width: 900px) {
+  .home-stage { height: auto; overflow-x: hidden; }
+  .home-fire-spot,
+  .home-smoke-spot {
+    bottom: auto !important;
+    top: min(58vh, 520px) !important;
+  }
+  .home-smoke-spot { transform: translate(-50%, -100%) !important; height: 55vh !important; }
+  .home-signs {
+    position: static !important;
+    transform: none !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 46px !important;
+    width: min(600px, 94vw);
+    margin: min(74vh, 660px) auto 34px;
+  }
+  .home-sign-form,
+  .home-sign-avatar { width: 100%; max-width: none; min-width: 0; flex: none; }
+}
+
+/* --- Narrow phones: create/join columns stack inside the sign ---- */
+@media (max-width: 560px) {
+  .sign-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+  .sign-or { flex-direction: row !important; }
+  .sign-or-line { height: 2px !important; width: auto !important; }
+}
