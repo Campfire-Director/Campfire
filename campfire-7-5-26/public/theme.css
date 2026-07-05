@@ -1,0 +1,873 @@
+/* ==========================================================
+   CAMPFIRE — theme.css
+   Every color, font, spacing, and layout rule lives here.
+   Edit, save, refresh the browser. The DESIGN TOKENS at the
+   top control most of the look in one place.
+   ========================================================== */
+
+/* ==========================================================
+   DESIGN TOKENS — your styling control panel.
+   ========================================================== */
+:root {
+  --bg: rgba(11, 18, 28, 0.55);   /* inset panels: inputs, story boxes, timer track */
+  --card: rgba(18, 26, 38, 0.88); /* cards — translucent so the night sky shows through */
+  --ink: #f1eee3;                 /* main text */
+  --ink-soft: #b8b3a6;            /* secondary text */
+  --accent: #e98f3e;              /* buttons & highlights — campfire orange */
+  --accent-ink: #241405;          /* text on accent-colored things */
+  --danger: #e8705f;
+  --good: #7cc79a;
+  --border: rgba(241, 238, 227, 0.16);
+  --radius: 14px;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-story: Georgia, "Times New Roman", serif;
+
+  /* Campfire palette */
+  --flame-outer: #e6772e;
+  --flame-mid: #f2a33c;
+  --flame-inner: #f7d154;
+  --ember: #e25822;
+  --ember-deep: #d9480f;
+  --log: #7a5a3a;
+  --smoke: #a7b1bd;        /* moonlit smoke */
+  --silhouette: #c9d0d8;   /* the buffooneries in the smoke (light, for the night sky) */
+  --mallow-gold: #f0c987;
+  --mallow-gold-edge: #c9974f;
+  --mallow-burnt: #3a3531;
+  --mallow-burnt-edge: #1f1c19;
+  --stick: #8a6d4a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  /* The night sky painting covers the whole page and stays put while scrolling */
+  background: #0d141d url('night-sky.jpg') center / cover no-repeat fixed;
+  color: var(--ink);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px 210px; /* room at the bottom for the campfire */
+}
+#app { width: 100%; max-width: 640px; position: relative; z-index: 1; }
+
+.card {
+  background: var(--card);
+  backdrop-filter: blur(5px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  margin-top: 16px;
+}
+h1 { font-size: 26px; margin-bottom: 4px; }
+h2 { font-size: 20px; margin-bottom: 12px; }
+.subtitle { color: var(--ink-soft); font-size: 14px; margin-bottom: 8px; }
+.spacer { height: 16px; }
+
+button {
+  font-family: inherit;
+  font-size: 16px;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 20px;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+input[type="text"], input[type="number"], textarea, select {
+  font-family: inherit;
+  font-size: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  width: 100%;
+}
+textarea {
+  font-family: var(--font-story);
+  font-size: 17px;
+  line-height: 1.6;
+  min-height: 180px;
+  resize: vertical;
+}
+label { font-size: 14px; color: var(--ink-soft); display: block; margin-bottom: 6px; }
+.field { margin-bottom: 16px; }
+.field-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.field-row .field { flex: 1; min-width: 140px; }
+
+.room-code { font-size: 40px; letter-spacing: 10px; text-align: center; font-weight: bold; margin: 8px 0 4px; }
+.player-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 6px 14px; margin: 0 6px 8px 0; font-size: 14px;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+.dot.off { background: var(--danger); }
+
+.director-pill {
+  display: inline-block; font-size: 13px; color: var(--ink-soft);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 4px 14px; margin-bottom: 8px;
+}
+
+.timer-wrap { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.timer-bar { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.timer-fill { height: 100%; background: var(--accent); width: 100%; transition: width 1s linear; }
+.timer-fill.low { background: var(--danger); }
+.timer-num { font-variant-numeric: tabular-nums; font-size: 14px; min-width: 44px; text-align: right; }
+
+.word-count { font-size: 14px; color: var(--ink-soft); margin-top: 8px; }
+.word-count.bad { color: var(--danger); }
+.word-count.good { color: var(--good); }
+
+.story-box {
+  font-family: var(--font-story); font-size: 17px; line-height: 1.7;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px; margin: 12px 0; max-height: 320px; overflow-y: auto;
+}
+.segment { margin-bottom: 12px; }
+.segment-author {
+  display: block; font-family: var(--font); font-size: 12px;
+  color: var(--accent); margin-bottom: 2px;
+}
+
+.status-list { margin-top: 12px; }
+.status-row { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; color: var(--ink-soft); }
+.status-row .done { color: var(--good); }
+
+/* Ready fraction badge, top right, visible to everyone */
+.ready-badge {
+  position: fixed; top: 12px; right: 14px; z-index: 5;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 999px; padding: 7px 14px; font-size: 14px;
+  display: none; align-items: center; gap: 7px;
+}
+
+/* ============ Voting: two marshmallows ============ */
+.vote-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px; margin-bottom: 10px;
+}
+.vote-row .who { flex: 1; min-width: 0; }
+.vote-row .teaser { font-family: var(--font-story); color: var(--ink-soft); font-size: 13px; display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mallow-btn {
+  background: var(--card); border: 2px solid var(--border);
+  border-radius: 10px; padding: 6px 8px; line-height: 0;
+}
+.mallow-btn.picked-gold { border-color: var(--mallow-gold-edge); background: rgba(240, 201, 135, 0.18); }
+.mallow-btn.picked-burnt { border-color: #9a9183; background: rgba(0, 0, 0, 0.35); }
+.vote-legend { display: flex; gap: 18px; font-size: 13px; color: var(--ink-soft); margin: 4px 0 12px; align-items: center; }
+.vote-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ============ Results ============ */
+.winner-banner { text-align: center; padding: 24px; border: 2px solid var(--mallow-gold-edge); border-radius: var(--radius); margin-bottom: 16px; background: var(--card); }
+.vote-tally { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-soft); margin: 6px 0; }
+.vote-tally .score { margin-left: auto; font-weight: bold; color: var(--ink); }
+.awards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.award-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.award-card .award-title { font-weight: bold; font-size: 15px; }
+.award-card .award-desc { font-size: 12px; color: var(--ink-soft); margin: 2px 0 6px; }
+.award-card .award-name { font-size: 15px; }
+.award-card .award-value { font-size: 12px; color: var(--ink-soft); }
+@media (max-width: 480px) { .awards { grid-template-columns: 1fr; } }
+
+details { margin-top: 12px; }
+summary { cursor: pointer; font-size: 15px; padding: 8px 0; }
+.error-msg { color: var(--danger); font-size: 14px; margin-top: 10px; min-height: 18px; }
+.banner {
+  background: var(--card); border: 1px solid var(--danger); border-radius: 10px;
+  padding: 10px 14px; font-size: 14px; margin-top: 12px; display: none;
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6;
+}
+
+/* ==========================================================
+   THE CAMPFIRE
+   --fire goes from 1 (roaring blaze, game start) down to 0
+   (smoldering coals, final round). Everything scales off it.
+   ========================================================== */
+.fire-ambient {
+  position: fixed; bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 230px; pointer-events: none; z-index: 0;
+}
+/* The fire is a painted GIF (campfire.gif, drawn in by art.js).
+   As --fire falls from 1 to 0 it shrinks toward the ground, dims,
+   desaturates, and its warm glow fades — the visual burn-down. */
+.campfire .fire-gif {
+  transform-origin: 50% 100%;
+  transform: scale(calc(0.35 + var(--fire, 1) * 0.65));
+  opacity: calc(0.5 + var(--fire, 1) * 0.5);
+  filter: saturate(calc(0.55 + var(--fire, 1) * 0.45))
+          drop-shadow(0 0 26px rgba(233, 143, 62, calc(var(--fire, 1) * 0.45)));
+  transition: transform 1.5s ease, opacity 1.5s ease, filter 1.5s ease;
+}
+
+/* ============ Home screen hero: fire + storytelling smoke ============ */
+.hero { position: relative; height: 400px; margin-top: 4px; }
+.hero-fire { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 250px; }
+.smoke-stage { position: absolute; left: 0; right: 0; top: 0; bottom: 190px; overflow: hidden; pointer-events: none; }
+.puff {
+  position: absolute; bottom: -30px; left: 50%;
+  border-radius: 50%; background: var(--smoke); opacity: 0;
+  animation: puff-rise 7s linear infinite;
+}
+.puff.p1 { width: 52px; height: 52px; }
+.puff.p2 { width: 36px; height: 36px; animation-delay: 2.3s; }
+.puff.p3 { width: 68px; height: 68px; animation-delay: 4.6s; }
+@keyframes puff-rise {
+  0% { transform: translate(-50%, 0) scale(0.6); opacity: 0; }
+  15% { opacity: 0.3; }
+  100% { transform: translate(calc(-50% + 28px), -215px) scale(1.35); opacity: 0; }
+}
+/* The buffooneries: each rises through the smoke once per 16s cycle */
+.vignette {
+  position: absolute; bottom: 0; left: 50%;
+  opacity: 0; animation: vig-rise 16s linear infinite;
+}
+.vignette.v2 { animation-delay: 4s; }
+.vignette.v3 { animation-delay: 8s; }
+.vignette.v4 { animation-delay: 12s; }
+@keyframes vig-rise {
+  0% { opacity: 0; transform: translate(-50%, 30px) scale(0.7); }
+  5% { opacity: 0.9; }
+  20% { opacity: 0; transform: translate(calc(-50% + 20px), -160px) scale(1.05); }
+  100% { opacity: 0; transform: translate(calc(-50% + 20px), -160px) scale(1.05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ==========================================================
+   v2 ADDITIONS — theme banner, vote previews, text contrast
+   ========================================================== */
+
+/* --- Text-over-image contrast ---
+   The night painting is busy in places (the moon, pale ridges),
+   so headings and loose subtitles that sit directly on it get a
+   soft dark scrim behind the text via text-shadow. */
+h1 {
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+/* The home screen title + tagline sit right on the sky — give them
+   their own readable plate so they never fight the moon. */
+.home-hero-text {
+  text-align: center;
+  background: linear-gradient(rgba(10, 15, 24, 0.55), rgba(10, 15, 24, 0.18));
+  border-radius: var(--radius);
+  padding: 18px 16px 16px;
+  margin-bottom: 4px;
+}
+.home-hero-text h1 { font-size: 30px; }
+.home-hero-text .subtitle { margin-bottom: 0; }
+/* Any subtitle NOT inside a card is floating on the painting — shade it */
+body > #app > .subtitle,
+.home-hero-text .subtitle {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+}
+
+/* --- The Director's Theme banner (shown on every writing screen) --- */
+.theme-banner {
+  background: linear-gradient(90deg, rgba(233, 143, 62, 0.22), rgba(233, 143, 62, 0.08));
+  border: 1px solid rgba(233, 143, 62, 0.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 10px 0 4px;
+  font-family: var(--font-story);
+  font-size: 16px;
+  color: var(--ink);
+}
+.theme-banner .theme-label {
+  display: inline-block;
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-right: 8px;
+}
+
+/* --- Voting: opening-line previews + stacked marshmallows --- */
+.vote-row { align-items: flex-start; }
+.vote-row .who-name { font-size: 15px; margin-bottom: 4px; }
+.vote-row .opening {
+  font-family: var(--font-story);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-height: 4.6em;
+  overflow-y: auto;
+}
+.mallow-stack { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ==========================================================
+   v3 ADDITIONS — floating timer, toast, pause, Best Camper
+   ========================================================== */
+
+/* --- Floating countdown bar, pinned to the top, always visible --- */
+.float-timer {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 20;
+  display: none;            /* shown only during writing rounds */
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(10, 15, 24, 0.82);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+}
+.float-timer .timer-bar { flex: 1; height: 8px; }
+.float-timer .timer-num { color: var(--ink); min-width: 64px; }
+.timer-fill.paused { background: var(--ink-soft); }
+/* Nudge the badge down so it doesn't collide with the floating bar */
+.ready-badge { top: 44px; }
+/* Push page content below the floating bar during play */
+body { scroll-padding-top: 48px; }
+
+/* --- Toast notification (AFK warning) --- */
+.toast {
+  position: fixed;
+  top: 56px; left: 50%;
+  transform: translateX(-50%) translateY(-12px);
+  z-index: 30;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* --- Pause bar inside the writing card --- */
+.pause-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(233, 143, 62, 0.16);
+  border: 1px solid rgba(233, 143, 62, 0.4);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  font-size: 14px;
+}
+.pause-bar.subtle {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border);
+  color: var(--ink-soft);
+}
+.pause-bar span { flex: 1; min-width: 160px; }
+button.small { font-size: 13px; padding: 6px 12px; }
+
+/* --- Best Overall Camper voting chips --- */
+.camper-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.camper-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 15px;
+}
+.camper-chip.picked {
+  border-color: var(--mallow-gold-edge);
+  background: rgba(240, 201, 135, 0.18);
+}
+
+/* ==========================================================
+   v4 ADDITIONS — lobby leave/share, theme suggestions, TTS
+   ========================================================== */
+
+/* --- Lobby top bar (Leave button + title) --- */
+.lobby-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lobby-top h1 { text-align: center; flex: 1; }
+
+/* --- Shareable join link row --- */
+.join-link-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.join-link-row input {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.join-link-row button { flex-shrink: 0; }
+
+/* --- Director's theme suggestion chips --- */
+.suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.suggestion-chip {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-family: var(--font-story);
+  font-size: 15px;
+}
+.suggestion-chip:hover { border-color: var(--accent); }
+
+/* ==========================================================
+   v5 ADDITIONS — audio mode (recorder, clips, playback chain)
+   ========================================================== */
+
+/* --- Audio clip player (used in writing context + reading) --- */
+.clip-player {
+  width: 100%;
+  margin: 10px 0;
+  height: 40px;
+}
+
+/* --- The recorder block on the writing screen --- */
+.recorder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 12px 0;
+}
+.rec-btn {
+  background: var(--danger);
+  color: #fff;
+  font-size: 17px;
+  padding: 14px 28px;
+  border-radius: 999px;
+}
+.rec-btn:hover { filter: brightness(1.08); }
+.rec-status {
+  font-size: 14px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* --- The clip chain on the reading screen --- */
+.clip-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+.clip-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.clip-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.clip-row .clip-player { flex: 1; margin: 0; }
+
+/* ==========================================================
+   v6 ADDITIONS — news headline theme picker
+   ========================================================== */
+.headline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.headline-chip {
+  text-align: left;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: var(--font-story);
+  font-size: 15px;
+  line-height: 1.4;
+}
+.headline-chip:hover { border-color: var(--accent); }
+.headline-source {
+  display: inline-block;
+  font-family: var(--font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ==========================================================
+   v7 ADDITIONS — kick button, presets, how-to overlay
+   ========================================================== */
+
+/* --- Kick button on player chips (host only) --- */
+.chip-kick {
+  background: transparent;
+  color: var(--ink-soft);
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 2px;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chip-kick:hover { background: var(--danger); color: #fff; }
+
+/* --- Settings preset buttons --- */
+.preset-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.preset-btn {
+  flex: 1;
+  min-width: 92px;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.preset-btn:hover { border-color: var(--accent); }
+
+/* --- How-to-play overlay --- */
+.howto-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(4, 8, 14, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.howto-card {
+  background: var(--card);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  max-width: 460px;
+  width: 100%;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+.howto-list { margin: 12px 0 8px; padding-left: 22px; }
+.howto-list li { margin-bottom: 12px; line-height: 1.5; }
+.howto-list li b { color: var(--accent); }
+
+/* ==========================================================
+   v8 — TITLE SCREEN SCENE (renderHome starry-night campfire)
+   ========================================================== */
+@keyframes cf-twinkle { 0%,100% { opacity:0.2; transform:scale(0.8); } 50% { opacity:0.9; transform:scale(1.15); } }
+@keyframes cf-spin { 0% { transform:rotate(0deg); } 100% { transform:rotate(360deg); } }
+@keyframes cf-spin-rev { 0% { transform:rotate(360deg); } 100% { transform:rotate(0deg); } }
+@keyframes cf-drift { 0% { transform:translateX(-14px); } 100% { transform:translateX(14px); } }
+@keyframes cf-letter-float { 0% { transform:translateY(0px); } 100% { transform:translateY(-9px); } }
+@keyframes cf-smoke-rise {
+  0% { transform:translate(-50%,0) scale(0.5); opacity:0; }
+  10% { opacity:0.5; }
+  55% { transform:translate(calc(-50% + 46px),-55vh) scale(1.3); opacity:0.42; }
+  85% { opacity:0.3; }
+  100% { transform:translate(calc(-50% + 24px),-78vh) scale(2); opacity:0; }
+}
+@keyframes cf-pool { 0% { transform:translate(-3%,0) scale(1); } 100% { transform:translate(3%,-4px) scale(1.07); } }
+@keyframes cf-ember-rise {
+  0% { transform:translate(0,0) scale(1); opacity:0; }
+  10% { opacity:0.95; } 60% { opacity:0.7; }
+  100% { transform:translate(26px,-340px) scale(0.3); opacity:0; }
+}
+@keyframes cf-sway { 0% { transform:rotate(-0.7deg); } 100% { transform:rotate(0.7deg); } }
+@keyframes cff-sway { 0%,100% { transform:rotate(-1.4deg); } 50% { transform:rotate(1.4deg); } }
+@keyframes cff-flick {
+  0% { transform:scaleY(1) scaleX(1) translateY(0); }
+  22% { transform:scaleY(1.06) scaleX(.965) translateY(-4px); }
+  46% { transform:scaleY(.975) scaleX(1.03) translateY(1px); }
+  70% { transform:scaleY(1.07) scaleX(.955) translateY(-5px); }
+  100% { transform:scaleY(1) scaleX(1) translateY(0); }
+}
+@keyframes cff-core { 0%,100% { transform:scaleY(1) translateY(0); opacity:.95; } 50% { transform:scaleY(1.1) translateY(-3px); opacity:1; } }
+@keyframes cff-tongue { 0%,100% { transform:scaleY(.85) translateY(4px); opacity:.5; } 40% { transform:scaleY(1.15) translateY(-6px); opacity:.95; } 70% { transform:scaleY(.95) translateY(-1px); opacity:.8; } }
+@keyframes cff-coal { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+@keyframes cf-owl-fly {
+  0%,62% { transform:translate(-160px,30px); opacity:0; }
+  63% { opacity:0.9; } 79% { opacity:0.9; }
+  80% { transform:translate(calc(100vw + 160px),-60px); opacity:0; }
+  100% { transform:translate(-160px,30px); opacity:0; }
+}
+@keyframes cf-owl-flap { 0% { transform:rotate(14deg); } 100% { transform:rotate(-22deg); } }
+@keyframes cf-bigfoot-peek { 0%,71% { transform:translateX(105px); } 75%,86% { transform:translateX(18px); } 90%,100% { transform:translateX(105px); } }
+@keyframes cf-star-shoot { 0%,88% { transform:translate(0,0); opacity:0; } 89% { opacity:0.9; } 93% { transform:translate(-260px,120px); opacity:0; } 100% { transform:translate(0,0); opacity:0; } }
+@keyframes cf-tail-swish { 0% { transform:rotate(0deg); } 100% { transform:rotate(-10deg); } }
+
+/* The full-viewport title stage */
+.home-stage {
+  position: relative; width: 100%; min-height: 100vh;
+  overflow: hidden; background: #14100d;
+}
+/* create/join inputs inside the wooden sign */
+.sign-input {
+  width: 100%; height: 42px; font-family: inherit; font-size: 15px;
+  padding: 0 12px; border: 1px solid rgba(46,29,15,0.5); border-radius: 8px;
+  background: rgba(20,16,13,0.5); color: #f1eee3;
+}
+.sign-btn {
+  width: 100%; height: 45px; font-family: inherit; font-size: 15px; font-weight: 600;
+  border: none; border-radius: 10px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink);
+}
+.sign-btn.secondary { background: transparent; color: #f1e6d4; border: 1px solid rgba(46,29,15,0.7); }
+.camper-avatar-btn {
+  background: rgba(24,15,7,0.45); border: 2px solid; border-radius: 10px;
+  padding: 4px 2px 2px; cursor: pointer; line-height: 0;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.camper-avatar-btn:hover { border-color: rgba(233,143,62,0.75) !important; }
+
+/* --- Full-bleed home mode ---------------------------------------
+   Every game screen lives in the centered 640px #app column, which
+   is right for menus and writing — but the title scene needs the
+   whole window. When the home screen renders, index.html puts an
+   `is-home` class on <body>; these rules release the scene from the
+   column. (The :has() selector is a pure-CSS backup for the same.) */
+body.is-home,
+body:has(.home-stage) {
+  display: block;
+  padding: 0;
+}
+body.is-home #app,
+body:has(.home-stage) #app {
+  max-width: none;
+  width: 100%;
+}
+
+/* The arched wordmark + tagline scale with the window instead of
+   being locked at the 92px desktop design size */
+.home-title {
+  display: flex; justify-content: center; align-items: flex-start; gap: 2px;
+  font-family: ui-rounded, 'SF Pro Rounded', 'Arial Rounded MT Bold',
+               'Hiragino Maru Gothic ProN', system-ui, sans-serif;
+  font-weight: 900;
+  font-size: clamp(42px, 9vw, 92px);
+  line-height: 1; letter-spacing: 2px; color: #fbf7ec; margin: 0;
+}
+.home-tagline {
+  margin-top: clamp(24px, 5.5vw, 54px);
+  font-size: clamp(14px, 2vw, 17px);
+  color: #d9d4c6;
+  text-shadow: 0 1px 8px rgba(0,0,0,.85), 0 2px 14px rgba(0,0,0,.7);
+  padding: 0 14px;
+}
+
+/* The wooden signs size themselves to the space available instead
+   of a fixed 600px + 360px (which is what got clipped before) */
+.home-signs {
+  width: min(1010px, calc(100% - 20px));
+  justify-content: center;
+}
+.home-sign-form  { flex: 1 1 560px; min-width: 0; max-width: 600px; }
+.home-sign-avatar { flex: 0 1 360px; min-width: 290px; }
+
+/* --- Tablets & phones (≤900px window) ----------------------------
+   The painted scene keeps the first screenful to itself; the signs
+   drop out of the overlay, stack, and the page scrolls down to them.
+   The fire is pinned to the visible scene (not a % of the taller
+   page) so the signs never sit on top of it. */
+@media (max-width: 900px) {
+  .home-stage { height: auto; overflow-x: hidden; }
+  .home-fire-spot,
+  .home-smoke-spot {
+    bottom: auto !important;
+    top: min(58vh, 520px) !important;
+  }
+  .home-smoke-spot { transform: translate(-50%, -100%) !important; height: 55vh !important; }
+  .home-signs {
+    position: static !important;
+    transform: none !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 46px !important;
+    width: min(600px, 94vw);
+    margin: min(74vh, 660px) auto 34px;
+  }
+  .home-sign-form,
+  .home-sign-avatar { width: 100%; max-width: none; min-width: 0; flex: none; }
+}
+
+/* --- Narrow phones: create/join columns stack inside the sign ---- */
+@media (max-width: 560px) {
+  .sign-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+  .sign-or { flex-direction: row !important; }
+  .sign-or-line { height: 2px !important; width: auto !important; }
+}
+
+/* ==========================================================
+   v9 — SOUND TOGGLE + LOBBY FIRESIDE + SHARE CARD
+   ========================================================== */
+
+/* The sound on/off button — always reachable, never in the way */
+.mute-btn {
+  position: fixed; left: 14px; bottom: 14px; z-index: 60;
+  width: 44px; height: 44px; padding: 0;
+  border-radius: 50%; font-size: 19px; line-height: 44px;
+  background: rgba(18, 26, 38, 0.85); color: var(--ink);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(5px);
+  cursor: pointer;
+}
+.mute-btn:hover { border-color: var(--accent); }
+
+/* The lobby fireside — everyone's camper seated around a small fire */
+.lobby-fireside {
+  position: relative;
+  height: 172px;
+  margin: 6px 0 14px;
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 100%, rgba(226, 88, 34, 0.18), rgba(0,0,0,0) 70%),
+    linear-gradient(180deg, #14202c 0%, #0f1a24 55%, #10231e 100%);
+  border: 1px solid var(--border);
+}
+
+/* ==========================================================
+   v10 — LIVE CAMP SIDEBAR + PASTE ALERT
+   ========================================================== */
+
+/* The floating sidebar during writing rounds: everyone's live word
+   count, a green check when they're in, and the CTRL+V badge of
+   shame. On narrower screens it hides — the same rows live inside
+   the writing card's status list. */
+.camp-sidebar {
+  position: fixed;
+  right: 16px;
+  top: 84px;
+  z-index: 40;
+  width: 224px;
+  padding: 12px 14px;
+  background: rgba(18, 26, 38, 0.9);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(6px);
+}
+.camp-sidebar-title {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+.camp-sidebar .status-row { margin: 7px 0; }
+@media (max-width: 1160px) { .camp-sidebar { display: none !important; } }
+
+/* Shared row bits (sidebar + in-card status list) */
+.status-row { display: flex; align-items: center; gap: 7px; }
+.camp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.camp-words {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.check-done { color: var(--good); font-weight: bold; }
+.check-waiting { color: var(--ink-soft); }
+
+/* The 🚨 CTRL+V badge — loud, red, and 0% serious */
+.paste-badge {
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.4px;
+  color: #fff;
+  background: var(--danger);
+  border-radius: 20px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+  animation: paste-pulse 1.1s ease-in-out infinite;
+}
+@keyframes paste-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 70, 50, 0.55); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(220, 70, 50, 0); }
+}
+
+/* ==========================================================
+   v11 — DEV PLAYTEST LINK + REDUCED MOTION
+   ========================================================== */
+
+/* The quiet little dev door on the wooden sign */
+.dev-link {
+  position: relative;
+  display: block;
+  margin: 6px auto 0;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: rgba(230, 201, 163, 0.55);
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.dev-link:hover { color: #e6c9a3; }
+
+/* Respect players who've asked their OS for less motion:
+   calm the pulsing badge and the scene's looping animations. */
+@media (prefers-reduced-motion: reduce) {
+  .paste-badge { animation: none; }
+  .home-stage *, .lobby-fireside *, .fire-ambient * {
+    animation-duration: 0.01s !important;
+    animation-iteration-count: 1 !important;
+  }
+}
