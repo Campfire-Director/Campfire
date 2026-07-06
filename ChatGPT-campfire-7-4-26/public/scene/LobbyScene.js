@@ -9,6 +9,7 @@
 //
 // =============================================================
 
+import Fire from "../effects/Fire.js";
 import Scene from "./Scene.js";
 import Assets from "./Assets.js";
 import Camera from "./Camera.js";
@@ -20,17 +21,37 @@ export default class LobbyScene extends Scene {
         super(renderer);
 
         this.camera = new Camera();
+        
+        this.fire = new Fire(
+        this.width / 2,
+        this.height * 0.80
+        )   ;
 
         this.environment =
             Assets.get("environment");
 
     }
 
+resize(width, height) {
+
+    this.width = width;
+    this.height = height;
+
+    if (this.fire) {
+
+        this.fire.x = width / 2;
+        this.fire.y = height * 0.80;
+
+    }
+
+}
+
     //---------------------------------------------------------
 
     update(dt) {
 
         this.camera.update(dt);
+        this.fire.update(dt);
 
     }
 
@@ -51,6 +72,8 @@ export default class LobbyScene extends Scene {
             this.height
         );
 
+        this.fire.draw(ctx);
+        
         // (future world-space layers draw here)
 
         this.camera.end(ctx);
