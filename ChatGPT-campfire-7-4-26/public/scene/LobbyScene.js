@@ -2,11 +2,18 @@
 // Campfire Engine v2
 // LobbyScene.js
 //
-// Renders the Campfire environment.
+// The title screen scene.
+//
+// Responsibilities:
+// - Own the environment artwork
+// - Own the camera
+// - (Later) Own visual effects
 // =============================================================
 
+import Stars from "../effects/Stars.js";
 import Scene from "./Scene.js";
 import Assets from "./Assets.js";
+import Camera from "./Camera.js";
 
 export default class LobbyScene extends Scene {
 
@@ -14,63 +21,92 @@ export default class LobbyScene extends Scene {
 
         super(renderer);
 
+        this.stars = new Stars();
+        
+        this.camera = new Camera();
+
         this.environment = Assets.get("environment");
 
     }
 
+    //---------------------------------------------------------
+
     update(dt) {
 
-        // Nothing yet.
+        this.camera.update(dt);
+
+        this.stars.update(dt);
 
     }
+
+    //---------------------------------------------------------
 
     draw(ctx) {
 
-    const image = this.environment;
+        this.camera.begin(
+            ctx,
+            this.width,
+            this.height
+        );
 
-    // -------- Camera Settings --------
+        this.drawEnvironment(ctx);
 
-    // We'll tweak these over time.
-    const zoom = 1.12;
-    const verticalOffset = 120;
+        this.stars.draw(
+         ctx,
+          this.width,
+            this.height
+        );
 
-    //----------------------------------
-
-    const canvasRatio = this.width / this.height;
-    const imageRatio = image.width / image.height;
-
-    let drawWidth;
-    let drawHeight;
-
-    if (imageRatio > canvasRatio) {
-
-        drawHeight = this.height;
-        drawWidth = drawHeight * imageRatio;
-
-    } else {
-
-        drawWidth = this.width;
-        drawHeight = drawWidth / imageRatio;
+        this.camera.end(ctx);
 
     }
 
-    // Apply cinematic zoom
-    drawWidth *= zoom;
-    drawHeight *= zoom;
+    //---------------------------------------------------------
 
-    const x = (this.width - drawWidth) / 2;
+    drawEnvironment(ctx) {
 
-    // Shift artwork upward so the fire sits lower
-    const y =
-        (this.height - drawHeight) / 2
-        - verticalOffset;
+        const image = this.environment;
 
-    ctx.drawImage(
-        image,
-        x,
-        y,
-        drawWidth,
-        drawHeight
-    );
+        const canvasRatio =
+            this.width / this.height;
+
+        const imageRatio =
+            image.width / image.height;
+
+        let drawWidth;
+        let drawHeight;
+
+        if (imageRatio > canvasRatio) {
+
+            drawHeight = this.height;
+            drawWidth = drawHeight * imageRatio;
+
+        }
+        else {
+
+            drawWidth = this.width;
+            drawHeight = drawWidth / imageRatio;
+
+        }
+
+        // Artistic framing
+        drawWidth *= this.camera.zoom;
+        drawHeight *= this.camera.zoom;
+
+        const x =
+            (this.width - drawWidth) * 0.5;
+
+        const y =
+            (this.height - drawHeight) * 0.5 - 120;
+
+        ctx.drawImage(
+            image,
+            x,
+            y,
+            drawWidth,
+            drawHeight
+        );
+
+    }
 
 }
