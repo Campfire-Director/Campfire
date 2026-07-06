@@ -26,37 +26,51 @@ export default class LobbyScene extends Scene {
 
     draw(ctx) {
 
-        const image = this.environment;
+    const image = this.environment;
 
-        const canvasRatio = this.width / this.height;
-        const imageRatio = image.width / image.height;
+    // -------- Camera Settings --------
 
-        let drawWidth;
-        let drawHeight;
+    // We'll tweak these over time.
+    const zoom = 1.12;
+    const verticalOffset = 120;
 
-        if (imageRatio > canvasRatio) {
+    //----------------------------------
 
-            drawHeight = this.height;
-            drawWidth = drawHeight * imageRatio;
+    const canvasRatio = this.width / this.height;
+    const imageRatio = image.width / image.height;
 
-        } else {
+    let drawWidth;
+    let drawHeight;
 
-            drawWidth = this.width;
-            drawHeight = drawWidth / imageRatio;
+    if (imageRatio > canvasRatio) {
 
-        }
+        drawHeight = this.height;
+        drawWidth = drawHeight * imageRatio;
 
-        const x = (this.width - drawWidth) * 0.5;
-        const y = (this.height - drawHeight) * 0.5;
+    } else {
 
-        ctx.drawImage(
-            image,
-            x,
-            y,
-            drawWidth,
-            drawHeight
-        );
+        drawWidth = this.width;
+        drawHeight = drawWidth / imageRatio;
 
     }
+
+    // Apply cinematic zoom
+    drawWidth *= zoom;
+    drawHeight *= zoom;
+
+    const x = (this.width - drawWidth) / 2;
+
+    // Shift artwork upward so the fire sits lower
+    const y =
+        (this.height - drawHeight) / 2
+        - verticalOffset;
+
+    ctx.drawImage(
+        image,
+        x,
+        y,
+        drawWidth,
+        drawHeight
+    );
 
 }
