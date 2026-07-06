@@ -38,10 +38,27 @@
   --stick: #8a6d4a;
 }
 
+html,
+body,
+#app {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+}
+
+#scene {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  /* The night sky painting covers the whole page and stays put while scrolling */
-  background: #0d141d url('night-sky.jpg') center / cover no-repeat fixed;
+ background: #0d141d;
+margin: 0;
+overflow: hidden;
   color: var(--ink);
   font-family: var(--font);
   min-height: 100vh;

@@ -2,15 +2,13 @@
 // Campfire Engine v2
 // LobbyScene.js
 //
-// The title screen scene.
+// Main title screen.
+// Draws the artwork and controls the camera.
+// Future visual effects (embers, smoke, firelight)
+// will be layered on top of the artwork.
 //
-// Responsibilities:
-// - Own the environment artwork
-// - Own the camera
-// - (Later) Own visual effects
 // =============================================================
 
-import Stars from "../effects/Stars.js";
 import Scene from "./Scene.js";
 import Assets from "./Assets.js";
 import Camera from "./Camera.js";
@@ -21,11 +19,10 @@ export default class LobbyScene extends Scene {
 
         super(renderer);
 
-        this.stars = new Stars();
-        
         this.camera = new Camera();
 
-        this.environment = Assets.get("environment");
+        this.environment =
+            Assets.get("environment");
 
     }
 
@@ -34,8 +31,6 @@ export default class LobbyScene extends Scene {
     update(dt) {
 
         this.camera.update(dt);
-
-        this.stars.update(dt);
 
     }
 
@@ -51,12 +46,6 @@ export default class LobbyScene extends Scene {
 
         this.drawEnvironment(ctx);
 
-        this.stars.draw(
-         ctx,
-          this.width,
-            this.height
-        );
-
         this.camera.end(ctx);
 
     }
@@ -66,6 +55,9 @@ export default class LobbyScene extends Scene {
     drawEnvironment(ctx) {
 
         const image = this.environment;
+
+        if (!image)
+            return;
 
         const canvasRatio =
             this.width / this.height;
@@ -81,23 +73,22 @@ export default class LobbyScene extends Scene {
             drawHeight = this.height;
             drawWidth = drawHeight * imageRatio;
 
-        }
-        else {
+        } else {
 
             drawWidth = this.width;
             drawHeight = drawWidth / imageRatio;
 
         }
 
-        // Artistic framing
-        drawWidth *= this.camera.zoom;
-        drawHeight *= this.camera.zoom;
+        // Slight zoom so artwork fills the screen naturally
+        drawWidth *= 1.08;
+        drawHeight *= 1.08;
 
         const x =
-            (this.width - drawWidth) * 0.5;
+            (this.width - drawWidth) / 2;
 
         const y =
-            (this.height - drawHeight) * 0.5 - 120;
+            (this.height - drawHeight) / 2;
 
         ctx.drawImage(
             image,
