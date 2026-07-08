@@ -2,34 +2,22 @@
 // Campfire Engine v2
 // Stars.js
 //
-// Twinkling stars for the title scene.
+// The painted stars, twinkling. Instead of scattering foreign
+// dots over the artwork (the old approach), this finds every
+// star the artist actually painted (ArtworkMap.sparkles) and
+// re-draws each one's own pixels additively on an independent
+// clock. The sky twinkles exactly where the painting says
+// stars are — and the moon shimmers slowest of all.
 // =============================================================
+
+import { REDUCED_MOTION, organic } from "./Flicker.js";
 
 export default class Stars {
 
-    constructor(count = 180) {
+    constructor(map) {
 
-        this.stars = [];
-
-        for (let i = 0; i < count; i++) {
-
-            this.stars.push({
-
-                x: Math.random(),
-
-                y: Math.random() * 0.55,
-
-                radius: 0.5 + Math.random() * 1.8,
-
-                phase: Math.random() * Math.PI * 2,
-
-                speed: 0.6 + Math.random() * 1.4
-
-            });
-
-        }
-
-        this.time = 0;
+        this.map = map;
+        this.time = Math.random() * 100;
 
     }
 
@@ -43,54 +31,38 @@ export default class Stars {
 
     //---------------------------------------------------------
 
-    draw(ctx, width, height) {
+    draw(ctx, view) {
+
+        if (REDUCED_MOTION) return; // the painted stars remain, still
+
+        const cache = this.map.scaled(view.scale);
 
         ctx.save();
+        ctx.globalCompositeOperation = "lighter";
 
-        for (const star of this.stars) {
+        for (const s of this.map.sparkles) {
 
-            const alpha =
-
-                0.45 +
-
-                0.55 *
-
-                Math.sin(
-
-                    this.time *
-
-                    star.speed +
-
-                    star.phase
-
-                );
+            // Each star brightens above its painted baseline and
+            // relaxes back — it never darkens, so the painting is
+            // always intact underneath.
+            const tw = organic(this.time, s.speed, s.phase) * 0.5 + 0.5;
+            const strength = s.isMoon ? 0.10 : 0.22;
+            const alpha = tw * tw * strength;
+            if (alpha < 0.015) continue;
 
             ctx.globalAlpha = alpha;
-
-            ctx.beginPath();
-
-            ctx.arc(
-
-                star.x * width,
-
-                star.y * height,
-
-                star.radius,
-
-                0,
-
-                Math.PI * 2
-
+            // source and destination both in view scale — 1:1 blit
+            const dx = s.sx * view.scale, dy = s.sy * view.scale;
+            const dw = s.sw * view.scale, dh = s.sh * view.scale;
+            ctx.drawImage(
+                cache.art,
+                dx, dy, dw, dh,
+                view.x + dx, view.y + dy, dw, dh
             );
-
-            ctx.fillStyle = "#FFF8E8";
-
-            ctx.fill();
 
         }
 
         ctx.restore();
-
         ctx.globalAlpha = 1;
 
     }

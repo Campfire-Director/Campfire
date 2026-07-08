@@ -245,9 +245,15 @@ export default class Renderer {
         if (!this.running)
             return;
 
+        // Clamped to [0, 0.05]: the first rAF timestamp can precede
+        // the performance.now() captured in start(), which would
+        // otherwise produce a NEGATIVE time step on frame one.
         this.deltaTime =
             Math.min(
-                (now - this.lastFrame) / 1000,
+                Math.max(
+                    (now - this.lastFrame) / 1000,
+                    0
+                ),
                 0.05
             );
 

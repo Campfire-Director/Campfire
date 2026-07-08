@@ -9,10 +9,15 @@
 //
 // =============================================================
 
-import Fire from "../effects/Fire.js";
 import Scene from "./Scene.js";
 import Assets from "./Assets.js";
 import Camera from "./Camera.js";
+import ArtworkMap from "../effects/ArtworkMap.js";
+import Firelight from "../effects/Firelight.js";
+import Fire from "../effects/Fire.js";
+import Smoke from "../effects/Smoke.js";
+import Embers from "../effects/Embers.js";
+import Stars from "../effects/Stars.js";
 
 export default class LobbyScene extends Scene {
 
@@ -21,37 +26,34 @@ export default class LobbyScene extends Scene {
         super(renderer);
 
         this.camera = new Camera();
-        
-        this.fire = new Fire(
-        this.width / 2,
-        this.height * 0.80
-        )   ;
 
         this.environment =
             Assets.get("environment");
 
+        // One analysis pass over the painting's pixels feeds
+        // every living-painting effect (see ArtworkMap.js)
+        this.map = new ArtworkMap(this.environment);
+
+        // Draw order, back to front:
+        // ground glow → breathing fire/title → smoke → embers → stars
+        this.effects = [
+            new Firelight(this.map),
+            new Fire(this.map),
+            new Smoke(this.map),
+            new Embers(this.map),
+            new Stars(this.map),
+        ];
+
     }
-
-resize(width, height) {
-
-    this.width = width;
-    this.height = height;
-
-    if (this.fire) {
-
-        this.fire.x = width / 2;
-        this.fire.y = height * 0.80;
-
-    }
-
-}
 
     //---------------------------------------------------------
 
     update(dt) {
 
         this.camera.update(dt);
-        this.fire.update(dt);
+
+        for (const fx of this.effects)
+            fx.update(dt);
 
     }
 
@@ -64,7 +66,15 @@ resize(width, height) {
         // coordinates. NOT world coordinates." The camera transform is
         // reserved for future world-space layers (avatars, particles
         // that live "in" the scene).
-        this.drawEnvironment(ctx);
+        const view = this.drawEnvironment(ctx);
+
+        // The living-painting layers share the artwork's exact
+        // placement, so they stay pixel-registered with the painting
+        // at every window size
+        if (view) {
+            for (const fx of this.effects)
+                fx.draw(ctx, view);
+        }
 
         this.camera.begin(
             ctx,
@@ -72,8 +82,6 @@ resize(width, height) {
             this.height
         );
 
-        this.fire.draw(ctx);
-        
         // (future world-space layers draw here)
 
         this.camera.end(ctx);
@@ -87,20 +95,14 @@ resize(width, height) {
         const image = this.environment;
 
         if (!image)
-            return;
+            return null;
 
         // CONTAIN fit: the whole painting is always visible, centered,
-        // aspect ratio preserved — no stretching, no cropping.
-        //
-        // Why contain and not cover: this artwork is portrait (1122x1402)
-        // and composed edge to edge — the painted CAMPFIRE title lives in
-        // the top quarter and the fire + seating (the future avatar
-        // spots) sit 60–90% down. Cover-fit on any landscape screen
-        // must crop more than half of that height away, which is exactly
-        // the "only the center shows" bug: the visible band was the dark
-        // forest BETWEEN the title and the fire. Contain letterboxes into
-        // the renderer's night color instead, so every design-critical
-        // element stays on screen at every window size.
+        // aspect ratio preserved — no stretching, no cropping. The
+        // composition uses the full canvas (title in the sky, fire and
+        // seating below), so cropping would always cut something the
+        // design says must stay visible. The letterbox blends into the
+        // renderer's night color, which matches the artwork's edges.
         //
         // (If a crop-to-fill look is ever wanted, swap Math.min for
         // Math.max below — that single change flips contain into cover.)
@@ -118,13 +120,19 @@ resize(width, height) {
         const y =
             (this.height - drawHeight) / 2;
 
+        // Blit the pre-scaled copy (rebuilt only when the window
+        // scale changes) — scaling a 1.5-megapixel painting every
+        // frame is the single most expensive thing a software
+        // rasterizer can be asked to do.
         ctx.drawImage(
-            image,
+            this.map.scaled(scale).art,
             x,
-            y,
-            drawWidth,
-            drawHeight
+            y
         );
+
+        // The view rect: where the artwork landed on screen this
+        // frame. Effects use it to stay registered with the painting.
+        return { x, y, scale };
 
     }
 

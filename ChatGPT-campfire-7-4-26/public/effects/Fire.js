@@ -2,23 +2,24 @@
 // Campfire Engine v2
 // Fire.js
 //
-// Stage 1
-// Procedural painted campfire.
+// The painted flames, breathing. This draws the fire's OWN
+// pixels (extracted into ArtworkMap.fireMask) back over the
+// painting additively, with an organic flicker on the alpha.
+// The flame the artist painted brightens and settles — nothing
+// foreign is drawn on top of it.
 //
-// Future stages will add:
-// - Sparks
-// - Smoke
-// - Firelight
+// The title gets the same treatment at a fraction of the
+// energy: a slow toasted-marshmallow glow.
 // =============================================================
+
+import { REDUCED_MOTION, fireFlicker, organic } from "./Flicker.js";
 
 export default class Fire {
 
-    constructor(x, y) {
+    constructor(map) {
 
-        this.x = x;
-        this.y = y;
-
-        this.time = 0;
+        this.map = map;
+        this.time = Math.random() * 100;
 
     }
 
@@ -32,160 +33,35 @@ export default class Fire {
 
     //---------------------------------------------------------
 
-    draw(ctx) {
+    draw(ctx, view) {
+
+        const cache = this.map.scaled(view.scale);
 
         ctx.save();
+        ctx.globalCompositeOperation = "lighter";
 
-        ctx.translate(this.x, this.y);
+        // The fire: a lively but bounded shimmer. Even at its
+        // peak it adds only a fraction of the painted values.
+        const flame = REDUCED_MOTION ? 0.5 : fireFlicker(this.time, 0);
+        this.drawMask(ctx, view, cache.fire, 0.05 + flame * 0.12);
 
-        //-----------------------------------
-        // Ground glow
-        //-----------------------------------
-
-        const glow =
-            0.9 +
-            Math.sin(this.time * 1.2) * 0.08;
-
-        const gradient =
-            ctx.createRadialGradient(
-                0,
-                0,
-                10,
-                0,
-                0,
-                110
-            );
-
-        gradient.addColorStop(
-            0,
-            `rgba(255,210,90,${0.35 * glow})`
-        );
-
-        gradient.addColorStop(
-            1,
-            "rgba(255,120,0,0)"
-        );
-
-        ctx.fillStyle = gradient;
-
-        ctx.beginPath();
-
-        ctx.ellipse(
-            0,
-            10,
-            95,
-            42,
-            0,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
-
-        //-----------------------------------
-        // Flame body
-        //-----------------------------------
-
-        const height =
-            150 +
-            Math.sin(this.time * 3.5) * 8;
-
-        const width =
-            40 +
-            Math.sin(this.time * 2.3) * 3;
-
-        const flame =
-            ctx.createLinearGradient(
-                0,
-                -height,
-                0,
-                20
-            );
-
-        flame.addColorStop(0, "#fff7d8");
-        flame.addColorStop(0.25, "#ffe27b");
-        flame.addColorStop(0.55, "#ffb13a");
-        flame.addColorStop(1, "#ff6b00");
-
-        ctx.fillStyle = flame;
-
-        ctx.beginPath();
-
-        ctx.moveTo(0, -height);
-
-        for (let i = 0; i <= 24; i++) {
-
-            const t = i / 24;
-
-            const yy = -height + t * height;
-
-            const sway =
-                Math.sin(
-                    this.time * 5 +
-                    t * 8
-                ) * 12;
-
-            const xx =
-                Math.sin(
-                    t * Math.PI
-                ) *
-                width +
-                sway;
-
-            ctx.lineTo(xx, yy);
-
-        }
-
-        for (let i = 24; i >= 0; i--) {
-
-            const t = i / 24;
-
-            const yy = -height + t * height;
-
-            const sway =
-                Math.sin(
-                    this.time * 5 +
-                    t * 8 +
-                    2
-                ) * 12;
-
-            const xx =
-                -Math.sin(
-                    t * Math.PI
-                ) *
-                width +
-                sway;
-
-            ctx.lineTo(xx, yy);
-
-        }
-
-        ctx.closePath();
-
-        ctx.fill();
-
-        //-----------------------------------
-        // Bright core
-        //-----------------------------------
-
-        ctx.fillStyle =
-            "rgba(255,255,240,.55)";
-
-        ctx.beginPath();
-
-        ctx.ellipse(
-            0,
-            -55,
-            16,
-            55,
-            0,
-            0,
-            Math.PI * 2
-        );
-
-        ctx.fill();
+        // The title: barely-there breathing, ~7 second period
+        const breathe = REDUCED_MOTION ? 0 : organic(this.time, 0.14, 2.0);
+        this.drawMask(ctx, view, cache.title, 0.04 + (breathe * 0.5 + 0.5) * 0.05);
 
         ctx.restore();
+        ctx.globalAlpha = 1;
+
+    }
+
+    //---------------------------------------------------------
+
+    drawMask(ctx, view, mask, alpha) {
+
+        if (!mask.canvas || alpha < 0.01) return;
+        ctx.globalAlpha = alpha;
+        // pre-scaled: a straight 1:1 blit
+        ctx.drawImage(mask.canvas, view.x + mask.x, view.y + mask.y);
 
     }
 
